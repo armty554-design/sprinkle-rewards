@@ -13,6 +13,161 @@ export function cleanText(val) {
   return String(val).trim();
 }
 
+function getColNum(r, colIdx) {
+  if (colIdx === null || colIdx === undefined || colIdx < 0) return 0;
+  return cleanNum(r[colIdx]);
+}
+
+function getColText(r, colIdx) {
+  if (colIdx === null || colIdx === undefined || colIdx < 0) return '';
+  return cleanText(r[colIdx]);
+}
+
+/**
+ * Dynamically builds a mapping of column headers from rows 1 and 2 of the CSV.
+ * This guarantees resilience against column additions, deletions, or shifts across different months.
+ */
+export function buildDynamicColMap(rows) {
+  const h1 = rows[1] || [];
+  const h2 = rows[2] || [];
+  const numCols = Math.max(h1.length, h2.length);
+
+  const colMap = {
+    // Top-level totals
+    totalScore: null,
+    totalPercent: null,
+    totalReward: null,
+    pendingDeduction: null,
+    specialBonus: null,
+    unhandledDeduction36: null,
+    zone: null,
+    carType: null,
+    overallLevel: null,
+    g1Level: null,
+    g2Level: null,
+    g3Level: null,
+    g4Level: null,
+
+    // Group totals
+    g1Score: null,
+    g1Percent: null,
+    g1Reward: null,
+    g2Score: null,
+    g2Percent: null,
+    g2Reward: null,
+    g3Score: null,
+    g3Percent: null,
+    g3Reward: null,
+    g4Score: null,
+    g4Percent: null,
+    g4Reward: null,
+
+    // Item-level columns dictionary
+    items: {}
+  };
+
+  const itemCodes = [
+    '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8',
+    '2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8',
+    '3.1', '3.2', '3.3', '3.4', '3.5', '3.6', '3.7', '3.8',
+    '4.1', '4.2', '4.3', '4.4', '4.5', '4.6', '4.7',
+    '5.1', '5.2'
+  ];
+
+  itemCodes.forEach(c => {
+    colMap.items[c] = {};
+  });
+
+  let currentH1 = '';
+
+  for (let c = 0; c < numCols; c++) {
+    const s1 = cleanText(h1[c]).replace(/\s+/g, ' ');
+    const s2 = cleanText(h2[c]).replace(/\s+/g, ' ');
+    if (s1) currentH1 = s1;
+
+    // Ignore end comparison columns (e.g. "ของเดิม", "ผลต่าง" in Jan 2569)
+    if (s1.includes('ของเดิม') || s1.includes('ผลต่าง')) continue;
+
+    // Totals
+    if (s2 === 'รวมเงินรางวัล' && colMap.totalReward === null) colMap.totalReward = c;
+    if (s2 === 'รวมคะแนนทั้งหมด' && colMap.totalScore === null) colMap.totalScore = c;
+    if (s2 === 'เปอร์เซ็นต์ทั้งหมด' && colMap.totalPercent === null) colMap.totalPercent = c;
+    if (s2.includes('รอหัก') && colMap.pendingDeduction === null) colMap.pendingDeduction = c;
+    if (s2.includes('กรณีมีข้อ 3.6') && colMap.unhandledDeduction36 === null) colMap.unhandledDeduction36 = c;
+    if (s2.includes('รางวัลพิเศษ') && colMap.specialBonus === null) colMap.specialBonus = c;
+
+    // Meta & Levels
+    if (s2.startsWith('เขต') && colMap.zone === null) colMap.zone = c;
+    if (s2 === 'ประเภทรถ' && colMap.carType === null) colMap.carType = c;
+    if (s2 === 'รวมทุกกลุ่มงาน' && colMap.overallLevel === null) colMap.overallLevel = c;
+    if (s2 === 'กลุ่มงานจัดส่ง' && colMap.g1Level === null) colMap.g1Level = c;
+    if (s2 === 'กลุ่มงานบริการ' && colMap.g2Level === null) colMap.g2Level = c;
+    if (s2 === 'กลุ่มงานเอกสารและผลิตภัณฑ์' && colMap.g3Level === null) colMap.g3Level = c;
+    if (s2 === 'กลุ่มงานภาพลักษณ์แบรนด์' && colMap.g4Level === null) colMap.g4Level = c;
+
+    // Group summaries
+    if (s2 === 'คะแนนรวม 1') colMap.g1Score = c;
+    if (s2 === 'เปอร์เซ็นต์ 1') colMap.g1Percent = c;
+    if (s2 === 'รางวัล 1') colMap.g1Reward = c;
+
+    if (s2 === 'คะแนนรวม 2') colMap.g2Score = c;
+    if (s2 === 'เปอร์เซ็นต์ 2') colMap.g2Percent = c;
+    if (s2 === 'รางวัล 2') colMap.g2Reward = c;
+
+    if (s2 === 'คะแนนรวม 3') colMap.g3Score = c;
+    if (s2 === 'เปอร์เซ็นต์ 3') colMap.g3Percent = c;
+    if (s2 === 'รางวัล 3') colMap.g3Reward = c;
+
+    if (s2 === 'คะแนนรวม 4') colMap.g4Score = c;
+    if (s2 === 'เปอร์เซ็นต์ 4') colMap.g4Percent = c;
+    if (s2 === 'รางวัล 4') colMap.g4Reward = c;
+
+    // Group 5 reward (labeled 'รางวัล' located before total score)
+    if (s2 === 'รางวัล' && c > 130 && c < 160 && !colMap.items['5.1'].reward) {
+      colMap.items['5.1'].reward = c;
+    }
+
+    // Specific sub-items
+    // 1.4: 001 ส่งไม่ครบ, 38 ทำรายการไม่ตรง
+    if (s2.includes('1.4') || s1.includes('1.4')) {
+      if (s2.includes('001') || (s2.includes('ผลงาน') && colMap.items['1.4'].result1 === undefined)) colMap.items['1.4'].result1 = c;
+      else if (s2.includes('1.4.1') || (s2.includes('คะแนน') && colMap.items['1.4'].score1 === undefined)) colMap.items['1.4'].score1 = c;
+      else if (s2.includes('38') || (s2.includes('ผลงาน') && colMap.items['1.4'].result1 !== undefined && colMap.items['1.4'].result2 === undefined)) colMap.items['1.4'].result2 = c;
+      else if (s2.includes('1.4.2') || (s2.includes('คะแนน') && colMap.items['1.4'].score1 !== undefined && colMap.items['1.4'].score2 === undefined)) colMap.items['1.4'].score2 = c;
+      else if (s2.includes('รางวัล')) colMap.items['1.4'].reward = c;
+      continue;
+    }
+
+    // 3.6: ตรวจสอบสิ่งปลอมปน (กำจัดได้, กำจัดไม่ได้, ไม่ร่วมมือ)
+    if (s2.includes('3.6') || s1.includes('3.6')) {
+      if (s2.includes('กำจัดได้') || s2.includes('3.6.1')) colMap.items['3.6'].cleanable = c;
+      else if (s2.includes('กำจัดไม่ได้') || s2.includes('3.6.2')) colMap.items['3.6'].uncleanable = c;
+      else if ((s2.includes('ไม่') && s2.includes('ร่วมมือ')) || s2.includes('3.6.3')) colMap.items['3.6'].uncooperative = c;
+      else if (s2.includes('คะแนน') && colMap.items['3.6'].score === undefined) colMap.items['3.6'].score = c;
+      else if (s2.includes('รางวัล') && colMap.items['3.6'].reward === undefined) colMap.items['3.6'].reward = c;
+      continue;
+    }
+
+    // General matching by code in H2 or H1
+    for (const code of itemCodes) {
+      if (s2.includes(code) || (currentH1.startsWith(code) && !s2.includes('คะแนนรวม') && !s2.includes('เปอร์เซ็นต์ ') && !s2.includes('รางวัล '))) {
+        if (s2.includes('ผลงาน') && colMap.items[code].result === undefined) colMap.items[code].result = c;
+        else if (s2.includes('คะแนน') && colMap.items[code].score === undefined) colMap.items[code].score = c;
+        else if (s2.includes('เปอร์เซ็นต์') && colMap.items[code].percent === undefined) colMap.items[code].percent = c;
+        else if ((s2.includes('รางวัล') || s2.includes('2.10')) && colMap.items[code].reward === undefined) colMap.items[code].reward = c;
+      }
+    }
+  }
+
+  // Safety fallbacks if any standard column is not found
+  if (colMap.totalReward === null) colMap.totalReward = 155;
+  if (colMap.totalScore === null) colMap.totalScore = colMap.totalReward - 4;
+  if (colMap.totalPercent === null) colMap.totalPercent = colMap.totalScore + 1;
+  if (colMap.zone === null) colMap.zone = colMap.totalReward + 2;
+
+  return colMap;
+}
+
 export function parseCSVData(csvText) {
   const result = Papa.parse(csvText, {
     skipEmptyLines: false,
@@ -23,10 +178,11 @@ export function parseCSVData(csvText) {
     throw new Error('รูปแบบไฟล์ไม่ถูกต้อง หรือข้อมูลไม่เพียงพอ');
   }
 
-  // Row 0 usually contains title e.g. 2569-09_ผลคะแนนรางวัลมาตรฐานจัดส่ง
   const title = cleanText(rows[0][0]) || 'รายงานผลคะแนนรางวัลมาตรฐานจัดส่ง';
   
-  // Extract driver rows
+  // Build dynamic column map for this CSV
+  const colMap = buildDynamicColMap(rows);
+
   const vehicles = [];
   let branchName = '';
   let monthName = '';
@@ -40,7 +196,7 @@ export function parseCSVData(csvText) {
     const col0 = cleanText(r[0]);
     const carCode = cleanText(r[3]);
 
-    if (col8 === 'sum' || col8.includes('ข้อมูลจาก link')) {
+    if (col8 === 'sum' || col8.includes('ข้อมูลจาก link') || col8.includes('รวม')) {
       break;
     }
 
@@ -52,7 +208,7 @@ export function parseCSVData(csvText) {
     if (!branchName && col0) branchName = col0;
     if (!monthName && r[1]) monthName = cleanText(r[1]);
 
-    const vehicle = parseDriverRow(r, i);
+    const vehicle = parseDriverRow(r, i, colMap);
     vehicles.push(vehicle);
   }
 
@@ -91,7 +247,7 @@ export function parseCSVData(csvText) {
     meta: {
       title,
       branch: branchName || 'รามอินทรา',
-      month: monthName || 'กันยายน 2026',
+      month: monthName || 'รายงานประจำเดือน',
       parsedAt: new Date().toISOString()
     },
     summary: {
@@ -108,7 +264,7 @@ export function parseCSVData(csvText) {
   };
 }
 
-function parseDriverRow(r, rowIndex) {
+function parseDriverRow(r, rowIndex, colMap) {
   const branch = cleanText(r[0]);
   const month = cleanText(r[1]);
   const empId = cleanText(r[2]);
@@ -125,27 +281,33 @@ function parseDriverRow(r, rowIndex) {
   const metersPerBottle = cleanNum(r[13]);
   const groupNumber = cleanText(r[14]);
 
-  const zone = cleanText(r[157]) || 'ไม่ระบุ';
-  const supervisorLogisticsId = cleanText(r[158]);
-  const supervisorLogisticsName = cleanText(r[159]);
-  const supervisorAdminId = cleanText(r[160]);
-  const supervisorAdminName = cleanText(r[161]);
-  const remark = cleanText(r[162]);
-  const carType = cleanText(r[169]) || (position.includes('พนักงาน') ? 'รถ S' : 'รถ ผปก.');
+  const zoneCol = colMap.zone !== null ? colMap.zone : 157;
+  const zone = getColText(r, zoneCol) || 'ไม่ระบุ';
+  const supervisorLogisticsId = getColText(r, zoneCol + 1);
+  const supervisorLogisticsName = getColText(r, zoneCol + 2);
+  const supervisorAdminId = getColText(r, zoneCol + 3);
+  const supervisorAdminName = getColText(r, zoneCol + 4);
+  const remark = getColText(r, zoneCol + 5);
+  
+  const carType = colMap.carType !== null 
+    ? getColText(r, colMap.carType) 
+    : (position.includes('พนักงาน') ? 'รถ S' : 'รถ ผปก.');
 
   // Group levels
-  const g1Level = cleanText(r[164]) || '-';
-  const g2Level = cleanText(r[165]) || '-';
-  const g3Level = cleanText(r[166]) || '-';
-  const g4Level = cleanText(r[167]) || '-';
-  const overallLevel = cleanText(r[168]) || '-';
+  const g1Level = getColText(r, colMap.g1Level) || '-';
+  const g2Level = getColText(r, colMap.g2Level) || '-';
+  const g3Level = getColText(r, colMap.g3Level) || '-';
+  const g4Level = getColText(r, colMap.g4Level) || '-';
+  const overallLevel = getColText(r, colMap.overallLevel) || '-';
+
+  const it = colMap.items;
 
   // Group 1: จัดส่ง
   const group1 = {
     name: 'กลุ่มงานจัดส่ง',
-    score: cleanNum(r[49]),
-    percent: cleanNum(r[50]),
-    reward: cleanNum(r[51]),
+    score: getColNum(r, colMap.g1Score),
+    percent: getColNum(r, colMap.g1Percent),
+    reward: getColNum(r, colMap.g1Reward),
     level: g1Level,
     items: [
       {
@@ -153,88 +315,95 @@ function parseDriverRow(r, rowIndex) {
         name: 'จัดส่งตรงเวลา',
         target: 'เต็ม 25',
         fullScore: 25,
-        result: cleanText(r[15]),
-        score: cleanNum(r[16]),
-        percent: cleanNum(r[17]),
-        reward: cleanNum(r[18]),
-        status: cleanNum(r[17]) >= 95 ? 'pass' : cleanNum(r[17]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['1.1'].result),
+        score: getColNum(r, it['1.1'].score),
+        percent: getColNum(r, it['1.1'].percent),
+        reward: getColNum(r, it['1.1'].reward),
+        status: getColNum(r, it['1.1'].percent) >= 95 ? 'pass' : getColNum(r, it['1.1'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '1.2',
         name: 'ตกรอบส่งสุทธิ',
         target: 'เต็ม 25',
         fullScore: 25,
-        result: cleanText(r[19]),
-        score: cleanNum(r[20]),
-        percent: cleanNum(r[21]),
-        reward: cleanNum(r[22]),
-        status: cleanNum(r[19]) === 0 ? 'pass' : 'fail'
+        result: getColText(r, it['1.2'].result),
+        score: getColNum(r, it['1.2'].score),
+        percent: getColNum(r, it['1.2'].percent),
+        reward: getColNum(r, it['1.2'].reward),
+        status: getColNum(r, it['1.2'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '1.3',
         name: 'ข้อร้องเรียน 01',
         target: 'เต็ม 20',
         fullScore: 20,
-        result: cleanText(r[23]) + ' ครั้ง',
-        score: cleanNum(r[25]),
-        percent: cleanNum(r[26]),
-        reward: cleanNum(r[27]),
-        status: cleanNum(r[23]) === 0 ? 'pass' : 'fail'
+        result: getColText(r, it['1.3'].result) + ' ครั้ง',
+        score: getColNum(r, it['1.3'].score),
+        percent: getColNum(r, it['1.3'].percent),
+        reward: getColNum(r, it['1.3'].reward),
+        status: getColNum(r, it['1.3'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '1.4',
         name: 'ส่งไม่ครบจำนวน (001) / ทำรายการไม่ตรงความเป็นจริง (38)',
         target: 'หักคะแนน/เงิน',
         fullScore: 0,
-        result: `ส่งไม่ครบ ${cleanNum(r[28])} ครั้ง, ทำรายการไม่ตรง ${cleanNum(r[30])} ครั้ง`,
-        score: cleanNum(r[29]) + cleanNum(r[31]),
+        result: `ส่งไม่ครบ ${getColNum(r, it['1.4'].result1)} ครั้ง, ทำรายการไม่ตรง ${getColNum(r, it['1.4'].result2)} ครั้ง`,
+        rawResult1: getColNum(r, it['1.4'].result1),
+        rawResult2: getColNum(r, it['1.4'].result2),
+        score: getColNum(r, it['1.4'].score1) + getColNum(r, it['1.4'].score2),
+        score1: getColNum(r, it['1.4'].score1),
+        score2: getColNum(r, it['1.4'].score2),
         percent: null,
-        reward: cleanNum(r[32]),
-        status: cleanNum(r[28]) === 0 && cleanNum(r[30]) === 0 && cleanNum(r[32]) >= 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['1.4'].reward),
+        status: getColNum(r, it['1.4'].result1) === 0 && getColNum(r, it['1.4'].result2) === 0 && getColNum(r, it['1.4'].reward) >= 0 ? 'pass' : 'fail'
       },
       {
         code: '1.5',
         name: 'GPS ไม่เกิน 100 เมตร',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[33]) + '%',
-        score: cleanNum(r[34]),
-        percent: cleanNum(r[35]),
-        reward: cleanNum(r[36]),
-        status: cleanNum(r[35]) >= 95 ? 'pass' : cleanNum(r[35]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['1.5'].result) + '%',
+        rawResult: getColNum(r, it['1.5'].result),
+        score: getColNum(r, it['1.5'].score),
+        percent: getColNum(r, it['1.5'].percent),
+        reward: getColNum(r, it['1.5'].reward),
+        status: getColNum(r, it['1.5'].percent) >= 95 ? 'pass' : getColNum(r, it['1.5'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '1.6',
         name: 'ตกรอบส่งซ้ำ',
         target: 'เต็ม 10',
         fullScore: 10,
-        result: cleanText(r[37]) + '%',
-        score: cleanNum(r[38]),
-        percent: cleanNum(r[39]),
-        reward: cleanNum(r[40]),
-        status: cleanNum(r[37]) === 0 ? 'pass' : 'fail'
+        result: getColText(r, it['1.6'].result) + '%',
+        rawResult: getColNum(r, it['1.6'].result),
+        score: getColNum(r, it['1.6'].score),
+        percent: getColNum(r, it['1.6'].percent),
+        reward: getColNum(r, it['1.6'].reward),
+        status: getColNum(r, it['1.6'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '1.7',
         name: 'ส่งด่วน 3 วัน',
         target: 'เต็ม 10',
         fullScore: 10,
-        result: cleanText(r[41]) + '%',
-        score: cleanNum(r[42]),
-        percent: cleanNum(r[43]),
-        reward: cleanNum(r[44]),
-        status: cleanNum(r[43]) >= 95 ? 'pass' : cleanNum(r[43]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['1.7'].result) + '%',
+        score: getColNum(r, it['1.7'].score),
+        percent: getColNum(r, it['1.7'].percent),
+        reward: getColNum(r, it['1.7'].reward),
+        status: getColNum(r, it['1.7'].percent) >= 95 ? 'pass' : getColNum(r, it['1.7'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '1.8',
         name: 'ประเภทการรับน้ำ',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[45]) + '%',
-        score: cleanNum(r[46]),
-        percent: cleanNum(r[47]),
-        reward: cleanNum(r[48]),
-        status: cleanNum(r[47]) >= 95 ? 'pass' : cleanNum(r[47]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['1.8'].result) + '%',
+        rawResult: getColNum(r, it['1.8'].result),
+        score: getColNum(r, it['1.8'].score),
+        percent: getColNum(r, it['1.8'].percent),
+        reward: getColNum(r, it['1.8'].reward),
+        status: getColNum(r, it['1.8'].percent) >= 95 ? 'pass' : getColNum(r, it['1.8'].percent) >= 85 ? 'warning' : 'fail'
       }
     ]
   };
@@ -242,9 +411,9 @@ function parseDriverRow(r, rowIndex) {
   // Group 2: บริการ
   const group2 = {
     name: 'กลุ่มงานบริการ',
-    score: cleanNum(r[79]),
-    percent: cleanNum(r[80]),
-    reward: cleanNum(r[81]),
+    score: getColNum(r, colMap.g2Score),
+    percent: getColNum(r, colMap.g2Percent),
+    reward: getColNum(r, colMap.g2Reward),
     level: g2Level,
     items: [
       {
@@ -252,63 +421,64 @@ function parseDriverRow(r, rowIndex) {
         name: 'จัดส่งตรงเวลานัดหมาย',
         target: 'เต็ม 30',
         fullScore: 30,
-        result: cleanText(r[52]) + '%',
-        score: cleanNum(r[53]),
-        percent: cleanNum(r[54]),
-        reward: cleanNum(r[55]),
-        status: cleanNum(r[54]) >= 95 ? 'pass' : 'fail'
+        result: getColText(r, it['2.1'].result) + '%',
+        score: getColNum(r, it['2.1'].score),
+        percent: getColNum(r, it['2.1'].percent),
+        reward: getColNum(r, it['2.1'].reward),
+        status: getColNum(r, it['2.1'].percent) >= 95 ? 'pass' : 'fail'
       },
       {
         code: '2.2',
         name: 'ข้อร้องเรียน 01 ที่เป็นเท็จ',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[56]) + ' ครั้ง',
-        score: cleanNum(r[58]),
-        percent: cleanNum(r[59]),
-        reward: cleanNum(r[60]),
-        status: cleanNum(r[56]) === 0 ? 'pass' : 'fail'
+        result: getColText(r, it['2.2'].result) + ' ครั้ง',
+        score: getColNum(r, it['2.2'].score),
+        percent: getColNum(r, it['2.2'].percent),
+        reward: getColNum(r, it['2.2'].reward),
+        status: getColNum(r, it['2.2'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '2.3',
         name: 'สมาชิกยกเลิกเนื่องจากบริการ',
         target: '-35 ถึง -55/ราย',
         fullScore: 0,
-        result: cleanText(r[61]) + ' ราย',
-        score: cleanNum(r[62]),
+        result: getColText(r, it['2.3'].result) + ' ราย',
+        rawResult: getColNum(r, it['2.3'].result),
+        score: getColNum(r, it['2.3'].score),
         percent: null,
-        reward: cleanNum(r[63]),
-        status: cleanNum(r[61]) === 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['2.3'].reward),
+        status: getColNum(r, it['2.3'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '2.4',
         name: 'คำชมสมาชิกใหม่',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[64]),
-        score: cleanNum(r[65]),
-        percent: cleanNum(r[66]),
-        reward: cleanNum(r[67]),
-        status: cleanNum(r[66]) >= 85 ? 'pass' : 'warning'
+        result: getColText(r, it['2.4'].result),
+        score: getColNum(r, it['2.4'].score),
+        percent: getColNum(r, it['2.4'].percent),
+        reward: getColNum(r, it['2.4'].reward),
+        status: getColNum(r, it['2.4'].percent) >= 85 ? 'pass' : 'warning'
       },
       {
         code: '2.5',
         name: 'ความพึงพอใจหลังการจัดส่ง',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[68]) + '%',
-        score: cleanNum(r[69]),
-        percent: cleanNum(r[70]),
-        reward: cleanNum(r[71]),
-        status: cleanNum(r[70]) >= 95 ? 'pass' : 'warning'
+        result: getColText(r, it['2.5'].result) + '%',
+        score: getColNum(r, it['2.5'].score),
+        percent: getColNum(r, it['2.5'].percent),
+        reward: getColNum(r, it['2.5'].reward),
+        status: getColNum(r, it['2.5'].percent) >= 95 ? 'pass' : 'warning'
       },
       {
         code: '2.6',
         name: 'เสริมน้ำนอกรอบ 02 (คะแนนเสริม)',
         target: 'คะแนนเสริม',
         fullScore: 4,
-        result: `${cleanText(r[72])} รายการ (${cleanText(r[73])}%)`,
-        score: cleanNum(r[74]),
+        result: `${getColText(r, it['2.6'].result)} รายการ`,
+        score: getColNum(r, it['2.6'].score),
         percent: null,
         reward: 0,
         status: 'pass'
@@ -318,8 +488,8 @@ function parseDriverRow(r, rowIndex) {
         name: 'เสริมน้ำนอกพื้นที่ 01 (คะแนนเสริม)',
         target: 'คะแนนเสริม',
         fullScore: 0,
-        result: cleanText(r[75]) + ' รายการ',
-        score: cleanNum(r[76]),
+        result: getColText(r, it['2.7'].result) + ' รายการ',
+        score: getColNum(r, it['2.7'].score),
         percent: null,
         reward: 0,
         status: 'pass'
@@ -329,11 +499,11 @@ function parseDriverRow(r, rowIndex) {
         name: 'ติดตามการจัดส่งหลังย้ายรอบถาวร',
         target: 'หักคะแนนหากตก',
         fullScore: 0,
-        result: cleanText(r[77]) + '%',
-        score: cleanNum(r[78]),
+        result: getColText(r, it['2.8'].result) + '%',
+        score: getColNum(r, it['2.8'].score),
         percent: null,
         reward: 0,
-        status: cleanNum(r[78]) >= 0 ? 'pass' : 'fail'
+        status: getColNum(r, it['2.8'].score) >= 0 ? 'pass' : 'fail'
       }
     ]
   };
@@ -341,9 +511,9 @@ function parseDriverRow(r, rowIndex) {
   // Group 3: เอกสารและผลิตภัณฑ์
   const group3 = {
     name: 'กลุ่มงานเอกสารและผลิตภัณฑ์',
-    score: cleanNum(r[112]),
-    percent: cleanNum(r[113]),
-    reward: cleanNum(r[114]),
+    score: getColNum(r, colMap.g3Score),
+    percent: getColNum(r, colMap.g3Percent),
+    reward: getColNum(r, colMap.g3Reward),
     level: g3Level,
     items: [
       {
@@ -351,88 +521,93 @@ function parseDriverRow(r, rowIndex) {
         name: 'จัดส่งคูปองพร้อมเก็บเงิน Prepaid',
         target: 'เต็ม 30',
         fullScore: 30,
-        result: cleanText(r[82]) + '%',
-        score: cleanNum(r[83]),
-        percent: cleanNum(r[84]),
-        reward: cleanNum(r[85]),
-        status: cleanNum(r[84]) >= 95 ? 'pass' : cleanNum(r[84]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['3.1'].result) + '%',
+        score: getColNum(r, it['3.1'].score),
+        percent: getColNum(r, it['3.1'].percent),
+        reward: getColNum(r, it['3.1'].reward),
+        status: getColNum(r, it['3.1'].percent) >= 95 ? 'pass' : getColNum(r, it['3.1'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '3.2',
         name: 'ทำรายการถูกต้องตามขั้นตอน (spd)',
         target: 'เต็ม 10',
         fullScore: 10,
-        result: cleanText(r[86]) + ' รายการ',
-        score: cleanNum(r[87]),
-        percent: cleanNum(r[88]),
-        reward: cleanNum(r[89]),
-        status: cleanNum(r[86]) === 0 ? 'pass' : cleanNum(r[88]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['3.2'].result) + ' รายการ',
+        rawResult: getColNum(r, it['3.2'].result),
+        score: getColNum(r, it['3.2'].score),
+        percent: getColNum(r, it['3.2'].percent),
+        reward: getColNum(r, it['3.2'].reward),
+        status: getColNum(r, it['3.2'].result) === 0 ? 'pass' : getColNum(r, it['3.2'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '3.3',
         name: 'เก็บคูปองค้างเก่าเกิน 7 วัน',
         target: 'เต็ม 10',
         fullScore: 10,
-        result: cleanText(r[90]) + ' รายการ',
-        score: cleanNum(r[91]),
-        percent: cleanNum(r[92]),
-        reward: cleanNum(r[93]),
-        status: cleanNum(r[90]) === 0 ? 'pass' : cleanNum(r[92]) >= 85 ? 'warning' : 'fail'
+        result: getColText(r, it['3.3'].result) + ' รายการ',
+        rawResult: getColNum(r, it['3.3'].result),
+        score: getColNum(r, it['3.3'].score),
+        percent: getColNum(r, it['3.3'].percent),
+        reward: getColNum(r, it['3.3'].reward),
+        status: getColNum(r, it['3.3'].result) === 0 ? 'pass' : getColNum(r, it['3.3'].percent) >= 85 ? 'warning' : 'fail'
       },
       {
         code: '3.4',
         name: 'เก็บเงินตรงรอบฝากเก็บ (Postpaid)',
         target: 'เต็ม 10',
         fullScore: 10,
-        result: cleanText(r[94]) + '%',
-        score: cleanNum(r[95]),
-        percent: cleanNum(r[96]),
-        reward: cleanNum(r[97]),
-        status: cleanNum(r[95]) >= 0 ? 'pass' : 'fail'
+        result: getColText(r, it['3.4'].result) + '%',
+        score: getColNum(r, it['3.4'].score),
+        percent: getColNum(r, it['3.4'].percent),
+        reward: getColNum(r, it['3.4'].reward),
+        status: getColNum(r, it['3.4'].score) >= 0 ? 'pass' : 'fail'
       },
       {
         code: '3.5',
         name: 'รับคืนตัวอย่างคุณภาพน้ำ',
         target: '-10/ครั้ง',
         fullScore: 0,
-        result: cleanText(r[98]) + ' ครั้ง',
-        score: cleanNum(r[99]),
+        result: getColText(r, it['3.5'].result) + ' ครั้ง',
+        score: getColNum(r, it['3.5'].score),
         percent: null,
-        reward: cleanNum(r[100]),
-        status: cleanNum(r[98]) === 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['3.5'].reward),
+        status: getColNum(r, it['3.5'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '3.6',
         name: 'ตรวจสอบสิ่งปลอมปน',
         target: '-5/ถัง',
         fullScore: 0,
-        result: `กำจัดได้ ${cleanNum(r[101])}, ไม่ได้ ${cleanNum(r[102])}, ไม่ร่วมมือ ${cleanNum(r[103])}`,
-        score: cleanNum(r[104]),
+        result: `กำจัดได้ ${getColNum(r, it['3.6'].cleanable)}, ไม่ได้ ${getColNum(r, it['3.6'].uncleanable)}, ไม่ร่วมมือ ${getColNum(r, it['3.6'].uncooperative)}`,
+        cleanable: getColNum(r, it['3.6'].cleanable),
+        uncleanable: getColNum(r, it['3.6'].uncleanable),
+        uncooperative: getColNum(r, it['3.6'].uncooperative),
+        score: getColNum(r, it['3.6'].score),
         percent: null,
-        reward: cleanNum(r[105]),
-        status: cleanNum(r[102]) === 0 && cleanNum(r[104]) >= 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['3.6'].reward),
+        status: getColNum(r, it['3.6'].uncleanable) === 0 && getColNum(r, it['3.6'].score) >= 0 ? 'pass' : 'fail'
       },
       {
         code: '3.7',
         name: 'สมาชิกปฏิเสธรับคูปอง (หัวข้อ 11)',
         target: '-5/ครั้ง',
         fullScore: 0,
-        result: cleanText(r[106]) + ' ครั้ง',
-        score: cleanNum(r[107]),
+        result: getColText(r, it['3.7'].result) + ' ครั้ง',
+        score: getColNum(r, it['3.7'].score),
         percent: null,
-        reward: cleanNum(r[108]),
-        status: cleanNum(r[106]) === 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['3.7'].reward),
+        status: getColNum(r, it['3.7'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '3.8',
         name: 'สมาชิกร้องเรียนไม่มีคูปอง',
         target: 'ร้องเรียน',
         fullScore: 0,
-        result: cleanText(r[109]) + ' ครั้ง',
-        score: cleanNum(r[110]),
+        result: getColText(r, it['3.8'].result) + ' ครั้ง',
+        score: getColNum(r, it['3.8'].score),
         percent: null,
-        reward: cleanNum(r[111]),
-        status: cleanNum(r[109]) === 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['3.8'].reward),
+        status: getColNum(r, it['3.8'].result) === 0 ? 'pass' : 'fail'
       }
     ]
   };
@@ -440,9 +615,9 @@ function parseDriverRow(r, rowIndex) {
   // Group 4: ภาพลักษณ์แบรนด์
   const group4 = {
     name: 'กลุ่มงานภาพลักษณ์แบรนด์',
-    score: cleanNum(r[140]),
-    percent: cleanNum(r[141]),
-    reward: cleanNum(r[142]),
+    score: getColNum(r, colMap.g4Score),
+    percent: getColNum(r, colMap.g4Percent),
+    reward: getColNum(r, colMap.g4Reward),
     level: g4Level,
     items: [
       {
@@ -450,113 +625,120 @@ function parseDriverRow(r, rowIndex) {
         name: 'ความสะอาดของรถจัดส่งสินค้า',
         target: 'ดีมาก/ผ่าน',
         fullScore: 15,
-        result: cleanText(r[115]),
-        score: cleanNum(r[116]),
-        percent: cleanNum(r[117]),
-        reward: cleanNum(r[118]),
-        status: cleanText(r[115]) === 'ดีมาก' ? 'pass' : cleanText(r[115]) === 'ผ่าน' ? 'warning' : 'fail'
+        result: getColText(r, it['4.1'].result),
+        score: getColNum(r, it['4.1'].score),
+        percent: getColNum(r, it['4.1'].percent),
+        reward: getColNum(r, it['4.1'].reward),
+        status: getColText(r, it['4.1'].result) === 'ดีมาก' ? 'pass' : getColText(r, it['4.1'].result) === 'ผ่าน' ? 'warning' : 'fail'
       },
       {
         code: '4.2',
         name: 'ความพร้อมของรถจัดส่งสินค้า',
         target: 'ดีมาก/ผ่าน',
         fullScore: 15,
-        result: cleanText(r[119]),
-        score: cleanNum(r[120]),
-        percent: cleanNum(r[121]),
-        reward: cleanNum(r[122]),
-        status: cleanText(r[119]) === 'ดีมาก' ? 'pass' : cleanText(r[119]) === 'ผ่าน' ? 'warning' : 'fail'
+        result: getColText(r, it['4.2'].result),
+        score: getColNum(r, it['4.2'].score),
+        percent: getColNum(r, it['4.2'].percent),
+        reward: getColNum(r, it['4.2'].reward),
+        status: getColText(r, it['4.2'].result) === 'ดีมาก' ? 'pass' : getColText(r, it['4.2'].result) === 'ผ่าน' ? 'warning' : 'fail'
       },
       {
         code: '4.3',
         name: 'การแต่งกายถูกต้องตามระเบียบ',
         target: 'ดีมาก/ผ่าน',
         fullScore: 15,
-        result: cleanText(r[123]),
-        score: cleanNum(r[124]),
-        percent: cleanNum(r[125]),
-        reward: cleanNum(r[126]),
-        status: cleanText(r[123]) === 'ดีมาก' ? 'pass' : cleanText(r[123]) === 'ผ่าน' ? 'warning' : 'fail'
+        result: getColText(r, it['4.3'].result),
+        score: getColNum(r, it['4.3'].score),
+        percent: getColNum(r, it['4.3'].percent),
+        reward: getColNum(r, it['4.3'].reward),
+        status: getColText(r, it['4.3'].result) === 'ดีมาก' ? 'pass' : getColText(r, it['4.3'].result) === 'ผ่าน' ? 'warning' : 'fail'
       },
       {
         code: '4.4',
         name: 'ข้อร้องเรียนพฤติกรรม (36, 05)',
         target: '-5 ถึง -15/ครั้ง',
         fullScore: 0,
-        result: cleanText(r[127]) + ' ครั้ง',
-        score: cleanNum(r[128]),
-        percent: cleanNum(r[129]),
+        result: getColText(r, it['4.4'].result) + ' ครั้ง',
+        rawResult: getColNum(r, it['4.4'].result),
+        score: getColNum(r, it['4.4'].score),
+        percent: getColNum(r, it['4.4'].percent),
         reward: 0,
-        status: cleanNum(r[127]) === 0 && cleanNum(r[128]) >= 0 ? 'pass' : 'fail'
+        status: getColNum(r, it['4.4'].result) === 0 && getColNum(r, it['4.4'].score) >= 0 ? 'pass' : 'fail'
       },
       {
         code: '4.5',
         name: 'ข้อร้องเรียนเรียกร้องค่าเสียหาย (94)',
         target: '-35 ถึง -55/ครั้ง',
         fullScore: 0,
-        result: cleanText(r[130]) + ' ครั้ง',
-        score: cleanNum(r[131]),
-        percent: cleanNum(r[132]),
+        result: getColText(r, it['4.5'].result) + ' ครั้ง',
+        rawResult: getColNum(r, it['4.5'].result),
+        score: getColNum(r, it['4.5'].score),
+        percent: getColNum(r, it['4.5'].percent),
         reward: 0,
-        status: cleanNum(r[130]) === 0 ? 'pass' : 'fail'
+        status: getColNum(r, it['4.5'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '4.6',
         name: 'ไม่กลับมาคืนน้ำภายในวันโดยไม่มีเหตุอันควร',
         target: '6 สาเหตุ',
         fullScore: 0,
-        result: cleanText(r[133]) + ' ครั้ง',
-        score: cleanNum(r[134]),
+        result: getColText(r, it['4.6'].result) + ' ครั้ง',
+        score: getColNum(r, it['4.6'].score),
         percent: null,
-        reward: cleanNum(r[135]),
-        status: cleanNum(r[133]) === 0 ? 'pass' : 'fail'
+        reward: getColNum(r, it['4.6'].reward),
+        status: getColNum(r, it['4.6'].result) === 0 ? 'pass' : 'fail'
       },
       {
         code: '4.7',
         name: 'ขับขี่ปลอดภัยและการเกิดอุบัติเหตุ',
         target: 'เต็ม 15',
         fullScore: 15,
-        result: cleanText(r[136]) + '%',
-        score: cleanNum(r[137]),
-        percent: cleanNum(r[138]),
-        reward: cleanNum(r[139]),
-        status: cleanNum(r[137]) >= 15 ? 'pass' : 'fail'
+        result: getColText(r, it['4.7'].result) + '%',
+        rawResult: getColNum(r, it['4.7'].result),
+        score: getColNum(r, it['4.7'].score),
+        percent: getColNum(r, it['4.7'].percent),
+        reward: getColNum(r, it['4.7'].reward),
+        status: getColNum(r, it['4.7'].score) >= 15 ? 'pass' : 'fail'
       }
     ]
   };
 
   // Group 5 & Other
+  const g5Score = getColNum(r, it['5.1'].score) + getColNum(r, it['5.2'].score);
+  const g5Reward = getColNum(r, it['5.1'].reward);
+
   const group5 = {
     name: 'กลุ่ม 5 และเงินพิเศษ',
-    score: cleanNum(r[144]) + cleanNum(r[149]),
-    reward: cleanNum(r[150]),
+    score: g5Score,
+    reward: g5Reward,
     items: [
       {
         code: '5.1',
         name: 'หาสมาชิกใหม่',
         target: '1 ราย 5, 2 ขึ้นไป 10',
-        result: cleanText(r[143]) + ' ราย',
-        score: cleanNum(r[144]),
-        reward: cleanNum(r[150])
+        result: getColText(r, it['5.1'].result) + ' ราย',
+        score: getColNum(r, it['5.1'].score),
+        reward: g5Reward
       },
       {
         code: '5.2',
         name: 'หนังสือเตือน',
         target: '-30/ใบ',
-        result: cleanText(r[145]) + ' ใบ',
-        score: cleanNum(r[149]),
+        result: getColText(r, it['5.2'].result) + ' ใบ',
+        rawResult: getColNum(r, it['5.2'].result),
+        score: getColNum(r, it['5.2'].score),
         reward: 0
       }
     ]
   };
 
   // Totals
-  const totalScore = cleanNum(r[151]);
-  const totalPercent = cleanNum(r[152]);
-  const specialBonus = cleanNum(r[153]);
-  const unhandledDeduction36 = cleanNum(r[154]);
-  const totalReward = cleanNum(r[155]);
-  const pendingDeduction = cleanNum(r[156]);
+  const totalScore = getColNum(r, colMap.totalScore);
+  const totalPercent = getColNum(r, colMap.totalPercent);
+  const specialBonus = getColNum(r, colMap.specialBonus);
+  const unhandledDeduction36 = getColNum(r, colMap.unhandledDeduction36);
+  const totalReward = getColNum(r, colMap.totalReward);
+  const pendingDeduction = getColNum(r, colMap.pendingDeduction);
 
   const totals = {
     totalScore,
@@ -594,7 +776,7 @@ function parseDriverRow(r, rowIndex) {
   };
 
   // Generate defects list
-  const defects = generateDefects(general, totals, group1, group2, group3, group4, r);
+  const defects = generateDefects(general, totals, group1, group2, group3, group4, group5);
 
   return {
     id: `${carCode}_${rowIndex}`,
@@ -611,7 +793,7 @@ function parseDriverRow(r, rowIndex) {
   };
 }
 
-function generateDefects(gen, totals, g1, g2, g3, g4, r) {
+function generateDefects(gen, totals, g1, g2, g3, g4, g5) {
   const defects = [];
 
   // General qualification check
@@ -650,92 +832,92 @@ function generateDefects(gen, totals, g1, g2, g3, g4, r) {
   }
 
   // 1.1 จัดส่งตรงเวลา
-  const item11 = g1.items[0];
-  if (item11.percent < 85 || item11.score === 0) {
+  const item11 = g1.items.find(i => i.code === '1.1');
+  if (item11 && (item11.percent < 85 || item11.score === 0)) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.1',
       severity: item11.score === 0 ? 'danger' : 'warning',
       title: 'จัดส่งตรงเวลาหลุดเกณฑ์',
-      detail: `ผลงานทำได้ ${item11.result}% (ได้ ${item11.score}/25 คะแนน, ${item11.percent}%)`,
+      detail: `ผลงานทำได้ ${item11.result} (ได้ ${item11.score}/25 คะแนน, ${item11.percent}%)`,
       impact: item11.reward > 0 ? `รางวัล ${item11.reward} บาท` : 'พลาดเงินรางวัลหัวข้อนี้'
     });
   }
 
   // 1.2 ตกรอบส่งสุทธิ
-  const item12 = g1.items[1];
-  if (cleanNum(r[19]) > 0 || item12.score < 25) {
+  const item12 = g1.items.find(i => i.code === '1.2');
+  if (item12 && (cleanNum(item12.result) > 0 || item12.score < 25)) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.2',
       severity: 'warning',
       title: 'มีอัตราตกรอบส่งสุทธิ',
-      detail: `มีตกรอบส่งสุทธิ ${r[19]}% (ได้ ${item12.score}/25 คะแนน)`,
+      detail: `มีตกรอบส่งสุทธิ ${item12.result}% (ได้ ${item12.score}/25 คะแนน)`,
       impact: `รางวัล 1.2: ${item12.reward} บาท`
     });
   }
 
   // 1.3 ข้อร้องเรียน 01
-  const item13 = g1.items[2];
-  if (cleanNum(r[23]) > 0 || item13.score < 20) {
+  const item13 = g1.items.find(i => i.code === '1.3');
+  if (item13 && (cleanNum(item13.result) > 0 || item13.score < 20)) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.3',
       severity: 'danger',
       title: 'มีข้อร้องเรียน 01',
-      detail: `พบข้อร้องเรียนจำนวน ${r[23]} ครั้ง (ได้ ${item13.score}/20 คะแนน)`,
+      detail: `พบข้อร้องเรียนจำนวน ${item13.result} (ได้ ${item13.score}/20 คะแนน)`,
       impact: 'เสียคะแนนกลุ่มจัดส่ง'
     });
   }
 
   // 1.4 ส่งไม่ครบ / ไม่ตรง
-  const c14_1 = cleanNum(r[28]);
-  const c14_2 = cleanNum(r[30]);
-  const r14 = cleanNum(r[32]);
-  if (c14_1 > 0 || c14_2 > 0 || r14 < 0) {
+  const item14 = g1.items.find(i => i.code === '1.4');
+  if (item14 && (item14.rawResult1 > 0 || item14.rawResult2 > 0 || item14.reward < 0)) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.4',
       severity: 'danger',
       title: 'ส่งไม่ครบตามจำนวน (001) หรือทำรายการไม่ตรง (38)',
-      detail: `ส่งไม่ครบ ${c14_1} ครั้ง, ทำรายการไม่ตรง ${c14_2} ครั้ง (หักคะแนน ${cleanNum(r[29])})`,
-      impact: `โดนหักเงินรางวัล ${r14} บาท`
+      detail: `ส่งไม่ครบ ${item14.rawResult1} ครั้ง, ทำรายการไม่ตรง ${item14.rawResult2} ครั้ง (หักคะแนน ${item14.score})`,
+      impact: `โดนหักเงินรางวัล ${item14.reward} บาท`
     });
   }
 
   // 1.5 GPS
-  const item15 = g1.items[4];
-  if (item15.percent < 90 || item15.score < 15) {
+  const item15 = g1.items.find(i => i.code === '1.5');
+  if (item15 && (item15.percent < 90 || item15.score < 15)) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.5',
       severity: 'warning',
       title: 'GPS เกิน 100 เมตร',
-      detail: `ผลงานทำได้ ${r[33]}% (ได้ ${item15.score}/15 คะแนน, ${item15.percent}%)`,
+      detail: `ผลงานทำได้ ${item15.result} (ได้ ${item15.score}/15 คะแนน, ${item15.percent}%)`,
       impact: 'พลาดคะแนนเต็ม'
     });
   }
 
   // 1.6 ตกรอบส่งซ้ำ
-  if (cleanNum(r[37]) > 0) {
+  const item16 = g1.items.find(i => i.code === '1.6');
+  if (item16 && cleanNum(item16.rawResult) > 0) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.6',
       severity: 'warning',
       title: 'มีตกรอบส่งซ้ำ',
-      detail: `ตกรอบส่งซ้ำ ${r[37]}% (ได้ ${cleanNum(r[38])}/10 คะแนน)`,
+      detail: `ตกรอบส่งซ้ำ ${item16.result} (ได้ ${item16.score}/10 คะแนน)`,
       impact: 'พลาดคะแนนเต็ม'
     });
   }
 
   // 1.8 ประเภทการรับน้ำ
-  if (cleanNum(r[46]) < 15) {
+  const item18 = g1.items.find(i => i.code === '1.8');
+  if (item18 && item18.score < 15) {
     defects.push({
       category: 'กลุ่ม 1 จัดส่ง',
       code: '1.8',
       severity: 'warning',
       title: 'ประเภทการรับน้ำหลุดเกณฑ์',
-      detail: `ผลงาน ${r[45]}% (ได้ ${cleanNum(r[46])}/15 คะแนน)`,
+      detail: `ผลงาน ${item18.result} (ได้ ${item18.score}/15 คะแนน)`,
       impact: 'พลาดคะแนนเต็ม'
     });
   }
@@ -753,28 +935,28 @@ function generateDefects(gen, totals, g1, g2, g3, g4, r) {
   }
 
   // 2.3 ยกเลิกบริการ
-  const c23 = cleanNum(r[61]);
-  if (c23 > 0) {
+  const item23 = g2.items.find(i => i.code === '2.3');
+  if (item23 && item23.rawResult > 0) {
     defects.push({
       category: 'กลุ่ม 2 บริการ',
       code: '2.3',
       severity: 'danger',
       title: 'สมาชิกขอยกเลิกบริการ',
-      detail: `มีสมาชิกยกเลิกจำนวน ${c23} ราย (หัก ${cleanNum(r[62])} คะแนน)`,
+      detail: `มีสมาชิกยกเลิกจำนวน ${item23.rawResult} ราย (หัก ${item23.score} คะแนน)`,
       impact: 'ถูกหักคะแนนหนัก (-35 ถึง -55/ราย)'
     });
   }
 
   // 2.8 ติดตามย้ายรอบ
-  const s28 = cleanNum(r[78]);
-  if (s28 < 0) {
+  const item28 = g2.items.find(i => i.code === '2.8');
+  if (item28 && item28.score < 0) {
     defects.push({
       category: 'กลุ่ม 2 บริการ',
       code: '2.8',
       severity: 'warning',
       title: 'ติดตามการจัดส่งหลังย้ายรอบถาวรถูกหักคะแนน',
-      detail: `ผลงาน ${r[77]}% (หักคะแนน ${s28})`,
-      impact: `หักคะแนนกลุ่มบริการ ${s28} คะแนน`
+      detail: `ผลงาน ${item28.result} (หักคะแนน ${item28.score})`,
+      impact: `หักคะแนนกลุ่มบริการ ${item28.score} คะแนน`
     });
   }
 
@@ -791,41 +973,54 @@ function generateDefects(gen, totals, g1, g2, g3, g4, r) {
   }
 
   // 3.2 spd
-  const c32 = cleanNum(r[86]);
-  if (c32 > 0) {
+  const item32 = g3.items.find(i => i.code === '3.2');
+  if (item32 && item32.rawResult > 0) {
     defects.push({
       category: 'กลุ่ม 3 เอกสาร',
       code: '3.2',
       severity: 'warning',
       title: 'ทำรายการผิดขั้นตอน (spd)',
-      detail: `พบรายการไม่ถูกต้อง ${c32} รายการ (ได้ ${cleanNum(r[87])}/10 คะแนน)`,
+      detail: `พบรายการไม่ถูกต้อง ${item32.rawResult} รายการ (ได้ ${item32.score}/10 คะแนน)`,
       impact: 'หักคะแนนขั้นตอน spd'
     });
   }
 
   // 3.3 คูปองค้างเก่า
-  const c33 = cleanNum(r[90]);
-  if (c33 > 0) {
+  const item33 = g3.items.find(i => i.code === '3.3');
+  if (item33 && item33.rawResult > 0) {
     defects.push({
       category: 'กลุ่ม 3 เอกสาร',
       code: '3.3',
       severity: 'warning',
       title: 'เก็บคูปองค้างเก่าเกิน 7 วัน',
-      detail: `พบคูปองค้างเก่าเกิน 7 วัน ${c33} รายการ (ได้ ${cleanNum(r[91])}/10 คะแนน)`,
+      detail: `พบคูปองค้างเก่าเกิน 7 วัน ${item33.rawResult} รายการ (ได้ ${item33.score}/10 คะแนน)`,
       impact: 'หักคะแนนคูปองค้างเก่า'
     });
   }
 
   // 3.4 Postpaid
-  const s34 = cleanNum(r[95]);
-  if (s34 < 0) {
+  const item34 = g3.items.find(i => i.code === '3.4');
+  if (item34 && item34.score < 0) {
     defects.push({
       category: 'กลุ่ม 3 เอกสาร',
       code: '3.4',
       severity: 'danger',
       title: 'เก็บเงินตรงรอบฝากเก็บ (Postpaid) โดนหักคะแนน',
-      detail: `ผลงานทำได้ ${r[94]}% (โดนหักคะแนน ${s34})`,
-      impact: `หักคะแนน ${s34} คะแนน`
+      detail: `ผลงานทำได้ ${item34.result} (โดนหักคะแนน ${item34.score})`,
+      impact: `หักคะแนน ${item34.score} คะแนน`
+    });
+  }
+
+  // 3.6 สิ่งปลอมปน
+  const item36 = g3.items.find(i => i.code === '3.6');
+  if (item36 && (item36.uncleanable > 0 || item36.score < 0 || item36.reward < 0)) {
+    defects.push({
+      category: 'กลุ่ม 3 เอกสาร',
+      code: '3.6',
+      severity: 'danger',
+      title: 'ตรวจสอบสิ่งปลอมปนมีปัญหา',
+      detail: `กำจัดไม่ได้ ${item36.uncleanable} ถัง, ไม่ร่วมมือ ${item36.uncooperative} ถัง (คะแนน ${item36.score})`,
+      impact: item36.reward < 0 ? `หักเงิน ${item36.reward} บาท` : 'หักคะแนนสิ่งปลอมปน'
     });
   }
 
@@ -842,80 +1037,79 @@ function generateDefects(gen, totals, g1, g2, g3, g4, r) {
   }
 
   // 4.1 ความสะอาดรถ
-  const res41 = cleanText(r[115]);
-  if (res41 === 'ผ่าน' || res41 === 'ไม่ได้ตรวจ' || res41 === 'ไม่ผ่าน') {
+  const item41 = g4.items.find(i => i.code === '4.1');
+  if (item41 && (item41.result === 'ผ่าน' || item41.result === 'ไม่ได้ตรวจ' || item41.result === 'ไม่ผ่าน')) {
     defects.push({
       category: 'กลุ่ม 4 ภาพลักษณ์',
       code: '4.1',
-      severity: res41 === 'ไม่ผ่าน' || res41 === 'ไม่ได้ตรวจ' ? 'danger' : 'warning',
-      title: `ความสะอาดรถได้ระดับ "${res41}"`,
-      detail: `ความสะอาดของรถได้ระดับ ${res41} (ได้ ${cleanNum(r[116])}/15 คะแนน, ไม่ถึงระดับ "ดีมาก")`,
+      severity: item41.result === 'ไม่ผ่าน' || item41.result === 'ไม่ได้ตรวจ' ? 'danger' : 'warning',
+      title: `ความสะอาดรถได้ระดับ "${item41.result}"`,
+      detail: `ความสะอาดของรถได้ระดับ ${item41.result} (ได้ ${item41.score}/15 คะแนน, ไม่ถึงระดับ "ดีมาก")`,
       impact: 'พลาดเงินรางวัลหัวข้อนี้ (200 บาท)'
     });
   }
 
   // 4.3 แต่งกาย
-  const res43 = cleanText(r[123]);
-  if (res43 === 'ผ่าน' || res43 === 'ไม่ได้ตรวจ' || res43 === 'ไม่ผ่าน') {
+  const item43 = g4.items.find(i => i.code === '4.3');
+  if (item43 && (item43.result === 'ผ่าน' || item43.result === 'ไม่ได้ตรวจ' || item43.result === 'ไม่ผ่าน')) {
     defects.push({
       category: 'กลุ่ม 4 ภาพลักษณ์',
       code: '4.3',
-      severity: res43 === 'ไม่ผ่าน' ? 'danger' : 'warning',
-      title: `การแต่งกายถูกต้องได้ระดับ "${res43}"`,
-      detail: `การแต่งกายได้ระดับ ${res43} (ได้ ${cleanNum(r[124])}/15 คะแนน, ไม่ถึงระดับ "ดีมาก")`,
+      severity: item43.result === 'ไม่ผ่าน' ? 'danger' : 'warning',
+      title: `การแต่งกายถูกต้องได้ระดับ "${item43.result}"`,
+      detail: `การแต่งกายได้ระดับ ${item43.result} (ได้ ${item43.score}/15 คะแนน, ไม่ถึงระดับ "ดีมาก")`,
       impact: 'พลาดเงินรางวัลหัวข้อนี้ (140 บาท)'
     });
   }
 
   // 4.4 ข้อร้องเรียนพฤติกรรม
-  const c44 = cleanNum(r[127]);
-  const s44 = cleanNum(r[128]);
-  if (c44 > 0 || s44 < 0) {
+  const item44 = g4.items.find(i => i.code === '4.4');
+  if (item44 && (item44.rawResult > 0 || item44.score < 0)) {
     defects.push({
       category: 'กลุ่ม 4 ภาพลักษณ์',
       code: '4.4',
       severity: 'danger',
       title: 'มีข้อร้องเรียน (36, 05) พฤติกรรมไม่เหมาะสม',
-      detail: `พบข้อร้องเรียนพฤติกรรม ${c44} ครั้ง (หัก ${s44} คะแนน)`,
+      detail: `พบข้อร้องเรียนพฤติกรรม ${item44.rawResult} ครั้ง (หัก ${item44.score} คะแนน)`,
       impact: 'ถูกหักคะแนนพฤติกรรม'
     });
   }
 
   // 4.5 ข้อร้องเรียนค่าเสียหาย
-  const c45 = cleanNum(r[130]);
-  if (c45 > 0) {
+  const item45 = g4.items.find(i => i.code === '4.5');
+  if (item45 && item45.rawResult > 0) {
     defects.push({
       category: 'กลุ่ม 4 ภาพลักษณ์',
       code: '4.5',
       severity: 'danger',
       title: 'มีข้อร้องเรียน (94) เรียกร้องค่าเสียหาย',
-      detail: `พบข้อร้องเรียนเรียกร้องค่าเสียหาย ${c45} ครั้ง`,
+      detail: `พบข้อร้องเรียนเรียกร้องค่าเสียหาย ${item45.rawResult} ครั้ง`,
       impact: 'ถูกหักคะแนนรุนแรง (-35 ถึง -55/ครั้ง)'
     });
   }
 
   // 4.7 อุบัติเหตุ
-  const s47 = cleanNum(r[137]);
-  if (s47 < 15) {
+  const item47 = g4.items.find(i => i.code === '4.7');
+  if (item47 && item47.score < 15) {
     defects.push({
       category: 'กลุ่ม 4 ภาพลักษณ์',
       code: '4.7',
       severity: 'danger',
       title: 'ขับขี่ปลอดภัยและการเกิดอุบัติเหตุไม่ผ่านเกณฑ์',
-      detail: `คะแนนความปลอดภัยได้ ${s47}/15 คะแนน (ผลงาน ${r[136]}%)`,
+      detail: `คะแนนความปลอดภัยได้ ${item47.score}/15 คะแนน (ผลงาน ${item47.result})`,
       impact: 'เสียคะแนนความปลอดภัย'
     });
   }
 
   // 5.2 หนังสือเตือน
-  const c52 = cleanNum(r[145]);
-  if (c52 > 0) {
+  const item52 = g5.items.find(i => i.code === '5.2');
+  if (item52 && item52.rawResult > 0) {
     defects.push({
       category: 'กลุ่ม 5 อื่นๆ',
       code: '5.2',
       severity: 'danger',
       title: 'มีหนังสือเตือน (Warning Letter)',
-      detail: `ได้รับหนังสือเตือน ${c52} ใบ (หักคะแนน ${cleanNum(r[149])})`,
+      detail: `ได้รับหนังสือเตือน ${item52.rawResult} ใบ (หักคะแนน ${item52.score})`,
       impact: 'หัก -30 คะแนน/ใบ'
     });
   }
