@@ -66,6 +66,14 @@ export default function VehicleCard({ vehicle, onSelect, onPrint }) {
                     <MapPin className="w-3 h-3 text-sky-500" />
                     {general.zone}
                   </span>
+                  {general.groupNumber && (
+                    <>
+                      <span>•</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        กลุ่ม {general.groupNumber}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

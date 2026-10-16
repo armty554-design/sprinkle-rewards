@@ -88,6 +88,11 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
                 <span className="bg-white/20 text-white text-xs px-2.5 py-0.5 rounded-full">
                   {general.position}
                 </span>
+                {general.groupNumber && (
+                  <span className="bg-amber-400/20 text-amber-200 border border-amber-400/40 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    กลุ่ม {general.groupNumber}
+                  </span>
+                )}
                 {!general.qualified && (
                   <span className="bg-rose-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
                     ไม่ผ่านเกณฑ์ส่งขั้นต่ำ
@@ -99,7 +104,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
                 <span>•</span>
                 <span>ประเภท: <strong>{general.carType}</strong></span>
                 <span>•</span>
-                <span>สาขา: <strong>{general.branch}</strong> ({general.zone})</span>
+                <span>สาขา: <strong>{general.branch}</strong> ({general.zone}{general.groupNumber ? ` • กลุ่ม ${general.groupNumber}` : ''})</span>
                 <span>•</span>
                 <span>หัวหน้าโลจิสติกส์: <strong>{general.supervisorLogisticsName || '-'}</strong></span>
               </div>

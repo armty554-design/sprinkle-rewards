@@ -94,7 +94,7 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
               <p className="mb-1"><span className="text-slate-500">ตำแหน่ง / ประเภท:</span> <strong className="text-slate-900">{general.position} ({general.carType})</strong></p>
             </div>
             <div>
-              <p className="mb-1"><span className="text-slate-500">สาขา:</span> <strong className="text-slate-900">{general.branch} ({general.zone})</strong></p>
+              <p className="mb-1"><span className="text-slate-500">สาขา:</span> <strong className="text-slate-900">{general.branch} ({general.zone}) {general.groupNumber ? `• กลุ่ม ${general.groupNumber}` : ''}</strong></p>
               <p className="mb-1"><span className="text-slate-500">ยอดส่งน้ำจริง:</span> <strong className="text-slate-900">{general.totalDelivered.toLocaleString()} ถัง</strong></p>
               <p className="mb-1"><span className="text-slate-500">หัวหน้าโลจิสติกส์:</span> <strong className="text-slate-900">{general.supervisorLogisticsName || '-'}</strong></p>
             </div>

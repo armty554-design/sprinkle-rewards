@@ -57,8 +57,16 @@ export default function MobileVehicleView({
             <h2 className="font-bold text-sm text-slate-900 leading-tight">
               {general.fullName}
             </h2>
-            <div className="text-[11px] text-slate-400">
-              รหัส {general.empId} • {general.zone}
+            <div className="text-[11px] text-slate-400 flex items-center gap-1">
+              <span>รหัส {general.empId}</span>
+              <span>•</span>
+              <span>{general.zone}</span>
+              {general.groupNumber && (
+                <>
+                  <span>•</span>
+                  <span className="font-semibold text-indigo-600 bg-indigo-50 px-1 rounded">กลุ่ม {general.groupNumber}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -104,7 +112,7 @@ export default function MobileVehicleView({
           >
             {allVehicles.map(v => (
               <option key={v.id} value={v.id}>
-                {v.general.carCode} - {v.general.fullName}
+                {v.general.carCode} - {v.general.fullName} {v.general.groupNumber ? `(กลุ่ม ${v.general.groupNumber})` : ''}
               </option>
             ))}
           </select>

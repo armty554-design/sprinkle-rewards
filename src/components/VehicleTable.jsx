@@ -61,9 +61,14 @@ export default function VehicleTable({ vehicles, onSelect, onPrint }) {
                     <div className="text-xs text-slate-400">รหัส {general.empId}</div>
                   </td>
 
-                  {/* Zone */}
-                  <td className="py-3 px-3 text-slate-600 font-medium">
-                    {general.zone}
+                  {/* Zone & Group */}
+                  <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
+                    <div>{general.zone}</div>
+                    {general.groupNumber && (
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 mt-0.5">
+                        กลุ่ม {general.groupNumber}
+                      </span>
+                    )}
                   </td>
 
                   {/* Car Type */}

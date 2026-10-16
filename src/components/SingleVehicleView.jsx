@@ -23,6 +23,7 @@ export default function SingleVehicleView({
 }) {
   const [search, setSearch] = useState('');
   const [zoneFilter, setZoneFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
   const [filterDefectsOnly, setFilterDefectsOnly] = useState(false);
   const [activeGroupFilter, setActiveGroupFilter] = useState('all');
 
@@ -30,9 +31,19 @@ export default function SingleVehicleView({
     return Array.from(new Set(vehicles.map(v => v.general.zone).filter(Boolean))).sort();
   }, [vehicles]);
 
+  const groupsList = useMemo(() => {
+    return Array.from(new Set(vehicles.map(v => v.general.groupNumber).filter(Boolean))).sort((a, b) => {
+      const numA = parseInt(a);
+      const numB = parseInt(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return String(a).localeCompare(String(b));
+    });
+  }, [vehicles]);
+
   const filteredList = useMemo(() => {
     return vehicles.filter(v => {
       if (zoneFilter !== 'all' && v.general.zone !== zoneFilter) return false;
+      if (groupFilter !== 'all' && v.general.groupNumber !== groupFilter) return false;
       if (search) {
         const q = search.toLowerCase().trim();
         const car = v.general.carCode.toLowerCase();
@@ -41,7 +52,7 @@ export default function SingleVehicleView({
       }
       return true;
     });
-  }, [vehicles, search, zoneFilter]);
+  }, [vehicles, search, zoneFilter, groupFilter]);
 
   const currentVehicle = useMemo(() => {
     if (!selectedVehicleId) return filteredList[0] || vehicles[0];
@@ -138,16 +149,29 @@ export default function SingleVehicleView({
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200/80 bg-slate-50/50 focus:bg-white focus:outline-hidden focus:border-sky-500 transition-colors"
               />
             </div>
-            <select
-              value={zoneFilter}
-              onChange={(e) => setZoneFilter(e.target.value)}
-              className="w-full py-1.5 px-3 text-xs rounded-xl border border-slate-200/80 bg-slate-50/50 text-slate-700 cursor-pointer"
-            >
-              <option value="all">ทุกเขต ({vehicles.length} คัน)</option>
-              {zones.map(z => (
-                <option key={z} value={z}>{z}</option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={zoneFilter}
+                onChange={(e) => setZoneFilter(e.target.value)}
+                className="w-full py-1.5 px-2.5 text-xs rounded-xl border border-slate-200/80 bg-slate-50/50 text-slate-700 cursor-pointer"
+              >
+                <option value="all">ทุกเขต ({zones.length} เขต)</option>
+                {zones.map(z => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
+              </select>
+
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="w-full py-1.5 px-2.5 text-xs rounded-xl border border-slate-200/80 bg-slate-50/50 text-slate-700 cursor-pointer"
+              >
+                <option value="all">ทุกกลุ่ม ({groupsList.length} กลุ่ม)</option>
+                {groupsList.map(g => (
+                  <option key={g} value={g}>กลุ่ม {g}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Vehicle List */}
@@ -176,8 +200,16 @@ export default function SingleVehicleView({
                       <div className="font-bold text-xs text-slate-900 truncate">
                         {v.general.fullName}
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {v.general.zone} • {v.general.carType}
+                      <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                        <span>{v.general.zone}</span>
+                        {v.general.groupNumber && (
+                          <>
+                            <span>•</span>
+                            <span className="font-semibold text-indigo-600 bg-indigo-50 px-1 rounded">กลุ่ม {v.general.groupNumber}</span>
+                          </>
+                        )}
+                        <span>•</span>
+                        <span>{v.general.carType}</span>
                       </div>
                     </div>
                   </div>
@@ -259,6 +291,11 @@ export default function SingleVehicleView({
                   <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">
                     {general.position}
                   </span>
+                  {general.groupNumber && (
+                    <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 rounded-full font-bold">
+                      กลุ่ม {general.groupNumber}
+                    </span>
+                  )}
                   {!general.qualified && (
                     <span className="text-xs bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full font-medium">
                       ส่ง &lt; 3,000 ถัง
@@ -271,6 +308,12 @@ export default function SingleVehicleView({
                   <span>{general.carType}</span>
                   <span>•</span>
                   <span>{general.branch} ({general.zone})</span>
+                  {general.groupNumber && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-indigo-600">กลุ่ม {general.groupNumber}</span>
+                    </>
+                  )}
                   <span>•</span>
                   <span>หัวหน้า: {general.supervisorLogisticsName || '-'}</span>
                 </div>
