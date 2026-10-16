@@ -406,7 +406,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
             </p>
             <input
               type="text"
-              placeholder="เช่น ไม่พบชื่อในแผนก หรือข้อมูลไม่ถูกต้อง"
+              placeholder="ระบุเหตุผลในการปฏิเสธคำขอ"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 mb-4"

@@ -3,30 +3,18 @@
 const STORAGE_USERS_KEY = 'sprinkle_registered_users';
 const STORAGE_STRICT_MODE_KEY = 'sprinkle_require_approval_strict';
 
-// Seed demo office staff request for immediate testability
-const INITIAL_USERS = [
-  {
-    id: 'reg_demo_1',
-    empId: 'OF001',
-    firstName: 'กานดา',
-    lastName: 'รักงาน',
-    fullName: 'กานดา รักงาน',
-    position: 'เจ้าหน้าที่ธุรการโลจิสติกส์',
-    branch: 'สาขา 1 (สนญ.)',
-    role: 'office',
-    status: 'pending', // 'pending' | 'approved' | 'rejected'
-    registeredAt: '16 ต.ค. 2569 16:30'
-  }
-];
-
 export function getRegisteredUsers() {
   try {
     const raw = localStorage.getItem(STORAGE_USERS_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(INITIAL_USERS));
-      return INITIAL_USERS;
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    // Ensure absolutely no mock/demo items exist
+    const cleaned = list.filter(u => u && !u.id?.startsWith('reg_demo') && u.empId !== 'OF001');
+    if (cleaned.length !== list.length) {
+      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(cleaned));
     }
-    return JSON.parse(raw);
+    return cleaned;
   } catch (err) {
     console.error('Failed to get registered users:', err);
     return [];

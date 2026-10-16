@@ -284,7 +284,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                 </label>
                 <input
                   type="text"
-                  placeholder="เช่น 10045 หรือ OF002"
+                  placeholder="ระบุรหัสพนักงาน"
                   value={regEmpId}
                   onChange={(e) => setRegEmpId(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
@@ -301,7 +301,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                   </label>
                   <input
                     type="text"
-                    placeholder="เช่น สมชาย"
+                    placeholder="ระบุชื่อจริง"
                     value={regFirstName}
                     onChange={(e) => setRegFirstName(e.target.value)}
                     className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
@@ -315,7 +315,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                   </label>
                   <input
                     type="text"
-                    placeholder="เช่น ใจดี"
+                    placeholder="ระบุนามสกุล"
                     value={regLastName}
                     onChange={(e) => setRegLastName(e.target.value)}
                     className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
@@ -333,7 +333,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                   <Briefcase className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="เช่น เจ้าหน้าที่ธุรการ, หัวหน้าโลจิสติกส์, ผู้จัดการ"
+                    placeholder="ระบุตำแหน่งงาน"
                     value={regPosition}
                     onChange={(e) => setRegPosition(e.target.value)}
                     className="w-full pl-8 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
@@ -447,13 +447,10 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
 
       </div>
 
-      {/* Footer & Admin Hint */}
-      <div className="mt-6 text-center space-y-1">
+      {/* Footer */}
+      <div className="mt-6 text-center">
         <p className="text-[11px] text-slate-400">
           บริษัท สปริงเคิล คอมมูนิเคชั่นส์ จำกัด • แผนกโลจิสติกส์
-        </p>
-        <p className="text-[10px] text-slate-400/80">
-          (สำหรับผู้ดูแลระบบ เข้าสู่ระบบด้วยรหัส: <code className="bg-slate-200 text-slate-700 px-1 py-0.5 rounded text-[10px]">admin</code>)
         </p>
       </div>
 
