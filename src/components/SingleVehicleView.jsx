@@ -183,8 +183,10 @@ export default function SingleVehicleView({
                   </div>
 
                   <div className="text-right shrink-0 ml-2">
-                    <span className={`text-sm font-bold block ${v.totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                      ฿{v.totals.totalReward.toLocaleString()}
+                    <span className={`text-sm font-bold block ${
+                      v.totals.totalReward < 0 ? 'text-rose-600' : v.totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
+                    }`}>
+                      {v.totals.totalReward < 0 ? `-฿${Math.abs(v.totals.totalReward).toLocaleString()}` : `฿${v.totals.totalReward.toLocaleString()}`}
                     </span>
                     {hasIssues ? (
                       <span className="text-[10px] text-amber-600 font-medium">
@@ -281,9 +283,9 @@ export default function SingleVehicleView({
                 รวมเงินรางวัลสุทธิ ({currentMonthLabel})
               </span>
               <div className={`text-3xl sm:text-4xl font-extrabold tracking-tight mt-0.5 ${
-                hasReward ? 'text-emerald-600' : 'text-slate-300'
+                totals.totalReward < 0 ? 'text-rose-600' : totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
               }`}>
-                ฿{totals.totalReward.toLocaleString()}
+                {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </div>
               <div className="text-xs text-slate-500 mt-1 font-medium">
                 คะแนนรวม {totals.totalScore} ({totals.totalPercent}%) • ผลประเมิน: {totals.overallLevel}
@@ -473,8 +475,10 @@ function CleanGroupSection({ group, title, renderStatusBadge, filterDefectsOnly 
           <span className="font-bold text-slate-800 text-xs sm:text-sm">{title}</span>
           <span className="text-slate-400 ml-2">({group.score} คะแนน • {group.level})</span>
         </div>
-        <div className="font-bold text-emerald-600 text-xs sm:text-sm">
-          ฿{group.reward.toLocaleString()} บาท
+        <div className={`font-bold text-xs sm:text-sm ${
+          group.reward < 0 ? 'text-rose-600' : group.reward > 0 ? 'text-emerald-600' : 'text-slate-400'
+        }`}>
+          {group.reward < 0 ? `-฿${Math.abs(group.reward).toLocaleString()}` : `฿${group.reward.toLocaleString()}`} บาท
         </div>
       </div>
 

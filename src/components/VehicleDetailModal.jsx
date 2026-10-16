@@ -129,8 +129,10 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
             {/* Total Reward */}
             <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
               <span className="text-xs text-slate-500 font-medium block">เงินรางวัลรวมสุทธิ</span>
-              <div className={`text-2xl sm:text-3xl font-black mt-0.5 ${hasReward ? 'text-emerald-600' : 'text-slate-400'}`}>
-                ฿{totals.totalReward.toLocaleString()}
+              <div className={`text-2xl sm:text-3xl font-black mt-0.5 ${
+                totals.totalReward < 0 ? 'text-rose-600' : totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
+              }`}>
+                {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </div>
               <span className="text-[11px] text-slate-400 block mt-0.5">ประจำเดือน {general.month}</span>
             </div>

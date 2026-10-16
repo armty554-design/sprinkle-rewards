@@ -124,9 +124,9 @@ export default function MobileVehicleView({
                 เงินรางวัลสุทธิประจำเดือน ({currentMonthLabel})
               </span>
               <div className={`text-4xl font-black mt-1 tracking-tight ${
-                hasReward ? 'text-emerald-600' : 'text-slate-400'
+                totals.totalReward < 0 ? 'text-rose-600' : totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
               }`}>
-                ฿{totals.totalReward.toLocaleString()}
+                {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </div>
 
               <div className="flex items-center justify-center gap-2 mt-2">
@@ -208,19 +208,35 @@ export default function MobileVehicleView({
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                   <span className="text-slate-600">1. กลุ่มงานจัดส่ง</span>
-                  <strong className="text-emerald-700 font-bold">฿{groups.group1.reward.toLocaleString()}</strong>
+                  <strong className={`font-bold ${
+                    groups.group1.reward < 0 ? 'text-rose-600' : groups.group1.reward > 0 ? 'text-emerald-700' : 'text-slate-400'
+                  }`}>
+                    {groups.group1.reward < 0 ? `-฿${Math.abs(groups.group1.reward).toLocaleString()}` : `฿${groups.group1.reward.toLocaleString()}`}
+                  </strong>
                 </div>
                 <div className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                   <span className="text-slate-600">2. กลุ่มงานบริการ</span>
-                  <strong className="text-emerald-700 font-bold">฿{groups.group2.reward.toLocaleString()}</strong>
+                  <strong className={`font-bold ${
+                    groups.group2.reward < 0 ? 'text-rose-600' : groups.group2.reward > 0 ? 'text-emerald-700' : 'text-slate-400'
+                  }`}>
+                    {groups.group2.reward < 0 ? `-฿${Math.abs(groups.group2.reward).toLocaleString()}` : `฿${groups.group2.reward.toLocaleString()}`}
+                  </strong>
                 </div>
                 <div className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                   <span className="text-slate-600">3. กลุ่มงานเอกสาร &amp; ผลิตภัณฑ์</span>
-                  <strong className="text-emerald-700 font-bold">฿{groups.group3.reward.toLocaleString()}</strong>
+                  <strong className={`font-bold ${
+                    groups.group3.reward < 0 ? 'text-rose-600' : groups.group3.reward > 0 ? 'text-emerald-700' : 'text-slate-400'
+                  }`}>
+                    {groups.group3.reward < 0 ? `-฿${Math.abs(groups.group3.reward).toLocaleString()}` : `฿${groups.group3.reward.toLocaleString()}`}
+                  </strong>
                 </div>
                 <div className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                   <span className="text-slate-600">4. กลุ่มงานภาพลักษณ์แบรนด์</span>
-                  <strong className="text-emerald-700 font-bold">฿{groups.group4.reward.toLocaleString()}</strong>
+                  <strong className={`font-bold ${
+                    groups.group4.reward < 0 ? 'text-rose-600' : groups.group4.reward > 0 ? 'text-emerald-700' : 'text-slate-400'
+                  }`}>
+                    {groups.group4.reward < 0 ? `-฿${Math.abs(groups.group4.reward).toLocaleString()}` : `฿${groups.group4.reward.toLocaleString()}`}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -307,7 +323,7 @@ export default function MobileVehicleView({
                     <div>
                       <h4 className="font-bold text-xs sm:text-sm text-slate-800">{title}</h4>
                       <span className="text-[11px] text-slate-400">
-                        {score} คะแนน • รางวัล ฿{group.reward.toLocaleString()}
+                        {score} คะแนน • รางวัล <span className={group.reward < 0 ? 'text-rose-600 font-bold' : group.reward > 0 ? 'text-emerald-700 font-bold' : ''}>{group.reward < 0 ? `-฿${Math.abs(group.reward).toLocaleString()}` : `฿${group.reward.toLocaleString()}`}</span>
                       </span>
                     </div>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />

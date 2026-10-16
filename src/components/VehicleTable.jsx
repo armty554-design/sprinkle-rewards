@@ -119,8 +119,10 @@ export default function VehicleTable({ vehicles, onSelect, onPrint }) {
 
                   {/* Net Reward */}
                   <td className="py-3 px-4 text-right">
-                    <span className={`text-base font-bold ${hasReward ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      ฿{totals.totalReward.toLocaleString()}
+                    <span className={`text-base font-bold ${
+                      totals.totalReward < 0 ? 'text-rose-600' : totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
+                    }`}>
+                      {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
                     </span>
                     {totals.pendingDeduction > 0 && (
                       <div className="text-[11px] text-rose-500 font-medium">

@@ -82,8 +82,10 @@ export default function VehicleCard({ vehicle, onSelect, onPrint }) {
           <div>
             <span className="text-xs text-slate-500 block mb-0.5">เงินรางวัลสุทธิ</span>
             <div className="flex items-baseline space-x-1">
-              <span className={`text-2xl font-black tracking-tight ${hasReward ? 'text-emerald-600' : 'text-slate-400'}`}>
-                ฿{totals.totalReward.toLocaleString()}
+              <span className={`text-2xl font-black tracking-tight ${
+                totals.totalReward < 0 ? 'text-rose-600' : totals.totalReward > 0 ? 'text-emerald-600' : 'text-slate-400'
+              }`}>
+                {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </span>
             </div>
           </div>

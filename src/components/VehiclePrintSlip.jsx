@@ -1,37 +1,65 @@
-import React from 'react';
-import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Printer, X, AlertTriangle } from 'lucide-react';
 
 export default function VehiclePrintSlip({ vehicle, onClose }) {
   if (!vehicle) return null;
 
   const { general, totals, groups, defects } = vehicle;
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const handlePrint = () => {
     window.print();
   };
 
+  const isNegativeTotal = totals.totalReward < 0;
+  const isZeroTotal = totals.totalReward === 0;
+
+  const renderRewardCell = (reward) => {
+    if (reward < 0) {
+      return <span className="font-bold text-rose-600">-฿{Math.abs(reward).toLocaleString()}</span>;
+    }
+    if (reward > 0) {
+      return <span className="font-bold text-emerald-700">฿{reward.toLocaleString()}</span>;
+    }
+    return <span className="text-slate-400">฿0</span>;
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 flex items-center justify-center p-4">
-      {/* Container */}
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-6 overflow-hidden border border-slate-200">
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 p-3 sm:p-6 flex justify-center items-start min-h-screen"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* Container - items-start ensures top is never pushed off-screen */}
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-4 sm:my-8 overflow-hidden border border-slate-200 flex flex-col relative">
         
-        {/* Floating Top Bar (Hidden on print) */}
-        <div className="p-4 bg-slate-800 text-white flex items-center justify-between no-print">
-          <span className="text-sm font-semibold flex items-center gap-2">
+        {/* Sticky Top Bar (Pinned to top on scroll, hidden on print) */}
+        <div className="sticky top-0 z-20 p-3 sm:p-4 bg-slate-900/95 backdrop-blur-md text-white flex items-center justify-between no-print shadow-md">
+          <span className="text-xs sm:text-sm font-semibold flex items-center gap-2">
             <Printer className="w-4 h-4 text-sky-400" />
             <span>ใบสรุปผลคะแนนและเงินรางวัลมาตรฐาน (ตัวอย่างก่อนพิมพ์)</span>
           </span>
           <div className="flex items-center space-x-2">
             <button
               onClick={handlePrint}
-              className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors"
+              className="px-3 sm:px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
             >
-              <Printer className="w-4 h-4" />
-              <span>สั่งพิมพ์ / บันทึก PDF</span>
+              <Printer className="w-3.5 h-3.5" />
+              <span>สั่งพิมพ์ / PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+              aria-label="ปิดหน้านี้"
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center gap-1 text-xs"
             >
               <X className="w-5 h-5" />
             </button>
@@ -39,7 +67,7 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
         </div>
 
         {/* Printable Sheet */}
-        <div className="p-8 sm:p-12 text-slate-900 bg-white" id="printable-slip">
+        <div className="p-6 sm:p-10 text-slate-900 bg-white" id="printable-slip">
           {/* Header */}
           <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start">
             <div>
@@ -72,12 +100,27 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
             </div>
           </div>
 
-          {/* Big Reward Box */}
-          <div className="p-4 bg-emerald-50 rounded-xl border-2 border-emerald-500 flex justify-between items-center mb-6">
+          {/* Big Reward Box - with Red style for negative amounts */}
+          <div className={`p-4 rounded-xl border-2 flex justify-between items-center mb-6 ${
+            isNegativeTotal 
+              ? 'bg-rose-50 border-rose-500' 
+              : isZeroTotal 
+                ? 'bg-slate-50 border-slate-300' 
+                : 'bg-emerald-50 border-emerald-500'
+          }`}>
             <div>
-              <span className="text-xs text-emerald-800 font-semibold uppercase">รวมเงินรางวัลสุทธิที่ได้รับ</span>
-              <div className="text-3xl font-black text-emerald-700 tracking-tight mt-0.5">
-                ฿{totals.totalReward.toLocaleString()} บาท
+              <span className={`text-xs font-semibold uppercase ${
+                isNegativeTotal ? 'text-rose-800' : isZeroTotal ? 'text-slate-600' : 'text-emerald-800'
+              }`}>
+                {isNegativeTotal ? 'รวมเงินรางวัลสุทธิที่ได้รับ (มียอดติดลบ)' : 'รวมเงินรางวัลสุทธิที่ได้รับ'}
+              </span>
+              <div className={`text-3xl font-black tracking-tight mt-0.5 ${
+                isNegativeTotal ? 'text-rose-600' : isZeroTotal ? 'text-slate-600' : 'text-emerald-700'
+              }`}>
+                {isNegativeTotal 
+                  ? `-฿${Math.abs(totals.totalReward).toLocaleString()} บาท` 
+                  : `฿${totals.totalReward.toLocaleString()} บาท`
+                }
               </div>
             </div>
             <div className="text-right">
@@ -129,42 +172,42 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
                   <td className="p-2 text-right border-r border-slate-200">{groups.group1.score}</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group1.percent}%</td>
                   <td className="p-2 text-center border-r border-slate-200">{groups.group1.level}</td>
-                  <td className="p-2 text-right font-bold text-emerald-700">฿{groups.group1.reward.toLocaleString()}</td>
+                  <td className="p-2 text-right">{renderRewardCell(groups.group1.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">2. กลุ่มงานบริการ</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group2.score}</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group2.percent}%</td>
                   <td className="p-2 text-center border-r border-slate-200">{groups.group2.level}</td>
-                  <td className="p-2 text-right font-bold text-emerald-700">฿{groups.group2.reward.toLocaleString()}</td>
+                  <td className="p-2 text-right">{renderRewardCell(groups.group2.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">3. กลุ่มงานเอกสารและผลิตภัณฑ์</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group3.score}</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group3.percent}%</td>
                   <td className="p-2 text-center border-r border-slate-200">{groups.group3.level}</td>
-                  <td className="p-2 text-right font-bold text-emerald-700">฿{groups.group3.reward.toLocaleString()}</td>
+                  <td className="p-2 text-right">{renderRewardCell(groups.group3.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">4. กลุ่มงานภาพลักษณ์แบรนด์</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group4.score}</td>
                   <td className="p-2 text-right border-r border-slate-200">{groups.group4.percent}%</td>
                   <td className="p-2 text-center border-r border-slate-200">{groups.group4.level}</td>
-                  <td className="p-2 text-right font-bold text-emerald-700">฿{groups.group4.reward.toLocaleString()}</td>
+                  <td className="p-2 text-right">{renderRewardCell(groups.group4.reward)}</td>
                 </tr>
-                {totals.specialBonus > 0 && (
+                {totals.specialBonus !== 0 && (
                   <tr>
                     <td className="p-2 border-r border-slate-200 font-medium">5. เงินพิเศษ / อื่นๆ</td>
                     <td className="p-2 text-right border-r border-slate-200">-</td>
                     <td className="p-2 text-right border-r border-slate-200">-</td>
                     <td className="p-2 text-center border-r border-slate-200">-</td>
-                    <td className="p-2 text-right font-bold text-emerald-700">฿{totals.specialBonus.toLocaleString()}</td>
+                    <td className="p-2 text-right">{renderRewardCell(totals.specialBonus)}</td>
                   </tr>
                 )}
                 {totals.pendingDeduction > 0 && (
                   <tr className="bg-rose-50 text-rose-800">
                     <td className="p-2 border-r border-slate-200 font-bold" colSpan={4}>ยอดคงค้างรอหักเดือนถัดไป (เนื่องจากรางวัลติดลบ)</td>
-                    <td className="p-2 text-right font-black text-rose-700">฿{totals.pendingDeduction.toLocaleString()}</td>
+                    <td className="p-2 text-right font-black text-rose-700">-฿{totals.pendingDeduction.toLocaleString()}</td>
                   </tr>
                 )}
               </tbody>
@@ -193,6 +236,24 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
           <div className="mt-8 text-center text-[10px] text-slate-400 border-t border-slate-200 pt-3">
             เอกสารนี้สร้างขึ้นโดยระบบอัตโนมัติ • พิมพ์เมื่อ {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </div>
+        </div>
+
+        {/* Bottom Actions Bar (Convenient close & print buttons on mobile/long screens) */}
+        <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between no-print">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <X className="w-4 h-4" />
+            <span>ปิดหน้านี้ (ESC)</span>
+          </button>
+          <button
+            onClick={handlePrint}
+            className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          >
+            <Printer className="w-4 h-4" />
+            <span>สั่งพิมพ์ / บันทึก PDF</span>
+          </button>
         </div>
 
       </div>
