@@ -1,0 +1,133 @@
+import React from 'react';
+import { 
+  Truck, 
+  RotateCw, 
+  Plus, 
+  BarChart2, 
+  LayoutGrid, 
+  Table as TableIcon,
+  Calendar,
+  Layers,
+  ChevronDown
+} from 'lucide-react';
+
+export default function Navbar({ 
+  meta, 
+  allMonths, 
+  selectedMonthKey, 
+  onSelectMonth, 
+  viewMode, 
+  setViewMode, 
+  activeTab, 
+  setActiveTab, 
+  onRefreshFromSheet, 
+  isRefreshing, 
+  onOpenUploadNewMonth 
+}) {
+  return (
+    <header className="bg-white border-b border-slate-100 sticky top-0 z-30 no-print">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-3">
+          
+          {/* Logo & Brand */}
+          <div className="flex items-center space-x-3 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-500 text-white flex items-center justify-center font-bold shadow-xs">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-slate-900 text-base tracking-tight">Sprinkle</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-xs font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md">
+                  รางวัลมาตรฐาน
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">สาขา {meta.branch}</p>
+            </div>
+          </div>
+
+          {/* Month Selector Pill */}
+          <div className="flex items-center space-x-2">
+            <div className="relative flex items-center">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+              <select
+                value={selectedMonthKey}
+                onChange={(e) => onSelectMonth(e.target.value)}
+                className="pl-8 pr-8 py-1.5 text-xs sm:text-sm font-semibold bg-slate-50 hover:bg-slate-100 text-slate-800 rounded-xl border border-slate-200/80 transition-colors cursor-pointer appearance-none focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
+              >
+                {allMonths.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label} {m.key === '2569-09' ? '(ล่าสุด)' : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
+            </div>
+
+            {/* Upload New Month Button */}
+            <button
+              onClick={onOpenUploadNewMonth}
+              title="นำเข้าไฟล์เดือนใหม่"
+              className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">เพิ่มเดือนใหม่</span>
+            </button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center space-x-2">
+            <div className="bg-slate-100/80 p-1 rounded-xl flex items-center text-xs font-medium">
+              <button
+                onClick={() => setActiveTab('single')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'single'
+                    ? 'bg-white text-slate-900 font-bold shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-sky-500" />
+                <span>ตรวจรายคัน</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('vehicles')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'vehicles'
+                    ? 'bg-white text-slate-900 font-bold shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">ภาพรวมทุกคัน</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'analytics'
+                    ? 'bg-white text-slate-900 font-bold shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">สถิติ</span>
+              </button>
+            </div>
+
+            {/* Sync button */}
+            <button
+              onClick={onRefreshFromSheet}
+              disabled={isRefreshing}
+              title="ซิงค์ข้อมูลชีต"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </header>
+  );
+}
