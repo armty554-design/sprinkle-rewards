@@ -98,8 +98,12 @@ export default function VehicleTable({ vehicles, onSelect, onPrint }) {
 
                   {/* Total score & % */}
                   <td className="py-3 px-3 text-center">
-                    <div className="font-bold text-slate-800">{totals.totalScore}</div>
-                    <div className="text-xs text-slate-500">{totals.totalPercent}%</div>
+                    <div className={`font-black text-sm ${totals.totalPercent >= 85 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {totals.totalScore}
+                    </div>
+                    <div className={`text-xs font-bold ${totals.totalPercent >= 85 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {totals.totalPercent}%
+                    </div>
                   </td>
 
                   {/* Defects Count */}

@@ -287,8 +287,25 @@ export default function SingleVehicleView({
               }`}>
                 {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </div>
-              <div className="text-xs text-slate-500 mt-1 font-medium">
-                คะแนนรวม {totals.totalScore} ({totals.totalPercent}%) • ผลประเมิน: {totals.overallLevel}
+              <div className="flex flex-wrap items-center sm:justify-end gap-1.5 text-xs text-slate-500 mt-1.5 font-medium">
+                <span>คะแนนรวม:</span>
+                <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
+                  totals.totalPercent >= 95 
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                    : totals.totalPercent >= 85 
+                      ? 'bg-sky-100 text-sky-800 border border-sky-200' 
+                      : 'bg-rose-100 text-rose-800 border border-rose-200'
+                }`}>
+                  {totals.totalScore} คะแนน ({totals.totalPercent}%)
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
+                  totals.overallLevel.includes('<') || totals.totalPercent < 85
+                    ? 'bg-rose-100 text-rose-800 border border-rose-200' 
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>
+                  ผลประเมิน: {totals.overallLevel}
+                </span>
               </div>
             </div>
 
@@ -471,9 +488,15 @@ function CleanGroupSection({ group, title, renderStatusBadge, filterDefectsOnly 
     <div>
       {/* Group Header */}
       <div className="px-5 py-3 bg-slate-50/60 flex items-center justify-between text-xs">
-        <div>
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-slate-800 text-xs sm:text-sm">{title}</span>
-          <span className="text-slate-400 ml-2">({group.score} คะแนน • {group.level})</span>
+          <span className={`px-2.5 py-0.5 rounded-md font-bold text-xs ${
+            group.percent >= 85 
+              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+              : 'bg-rose-100 text-rose-800 border border-rose-200'
+          }`}>
+            {group.score} คะแนน ({group.percent}%) • {group.level}
+          </span>
         </div>
         <div className={`font-bold text-xs sm:text-sm ${
           group.reward < 0 ? 'text-rose-600' : group.reward > 0 ? 'text-emerald-600' : 'text-slate-400'
@@ -509,13 +532,17 @@ function CleanGroupSection({ group, title, renderStatusBadge, filterDefectsOnly 
                 <td className="py-3 px-4 font-medium text-slate-800">{item.name}</td>
                 <td className="py-3 px-3 text-slate-400">{item.target}</td>
                 <td className="py-3 px-3 text-right font-bold text-slate-800">{item.result}</td>
-                <td className="py-3 px-3 text-right font-semibold">
-                  <span className={item.score < 0 ? 'text-rose-600' : 'text-slate-800'}>
-                    {item.score}
-                  </span>
+                <td className="py-3 px-3 text-right">
+                  {renderItemScoreBadge(item)}
                 </td>
-                <td className="py-3 px-3 text-right text-slate-500">
-                  {item.percent !== null ? `${item.percent}%` : '-'}
+                <td className="py-3 px-3 text-right text-xs">
+                  {item.percent !== null ? (
+                    <span className={`font-bold ${
+                      item.percent >= 95 ? 'text-emerald-700' : item.percent >= 85 ? 'text-sky-700' : 'text-rose-600'
+                    }`}>
+                      {item.percent}%
+                    </span>
+                  ) : '-'}
                 </td>
                 <td className="py-3 px-4 text-right font-bold">
                   {item.reward !== undefined ? (
@@ -533,5 +560,61 @@ function CleanGroupSection({ group, title, renderStatusBadge, filterDefectsOnly 
         </table>
       </div>
     </div>
+  );
+}
+
+function renderItemScoreBadge(item) {
+  const { score, fullScore, status } = item;
+
+  if (score < 0) {
+    return (
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  if (fullScore > 0) {
+    if (score >= fullScore) {
+      return (
+        <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          {score}
+        </span>
+      );
+    }
+    if (score > 0) {
+      return (
+        <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+          {score}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  if (score > 0) {
+    return (
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+        +{score}
+      </span>
+    );
+  }
+
+  if (status === 'fail') {
+    return (
+      <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold text-slate-700 bg-slate-100">
+      {score}
+    </span>
   );
 }

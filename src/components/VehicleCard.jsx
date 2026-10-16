@@ -92,7 +92,7 @@ export default function VehicleCard({ vehicle, onSelect, onPrint }) {
 
           <div className="text-right">
             <span className="text-xs text-slate-500 block mb-0.5">คะแนนรวม ({totals.totalPercent}%)</span>
-            <div className="font-semibold text-slate-800 text-base">
+            <div className={`font-black text-base ${totals.totalPercent >= 85 ? 'text-emerald-700' : 'text-rose-600'}`}>
               {totals.totalScore} <span className="text-xs font-normal text-slate-500">คะแนน</span>
             </div>
           </div>

@@ -125,8 +125,12 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
             </div>
             <div className="text-right">
               <span className="text-xs text-slate-600 block">คะแนนรวมทั้งหมด</span>
-              <span className="text-xl font-bold text-slate-900">{totals.totalScore} คะแนน ({totals.totalPercent}%)</span>
-              <div className="text-xs text-slate-600 mt-0.5">ระดับประเมิน: {totals.overallLevel}</div>
+              <span className={`text-xl font-black block ${totals.totalPercent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {totals.totalScore} คะแนน ({totals.totalPercent}%)
+              </span>
+              <div className="text-xs text-slate-600 mt-0.5">
+                ระดับประเมิน: <strong className={totals.overallLevel.includes('<') ? 'text-rose-600' : 'text-emerald-700'}>{totals.overallLevel}</strong>
+              </div>
             </div>
           </div>
 
@@ -169,30 +173,30 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
               <tbody className="divide-y divide-slate-200">
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">1. กลุ่มงานจัดส่ง</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group1.score}</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group1.percent}%</td>
-                  <td className="p-2 text-center border-r border-slate-200">{groups.group1.level}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group1.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group1.score}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group1.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group1.percent}%</td>
+                  <td className={`p-2 text-center border-r border-slate-200 font-semibold ${groups.group1.level.includes('<') ? 'text-rose-700' : 'text-emerald-700'}`}>{groups.group1.level}</td>
                   <td className="p-2 text-right">{renderRewardCell(groups.group1.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">2. กลุ่มงานบริการ</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group2.score}</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group2.percent}%</td>
-                  <td className="p-2 text-center border-r border-slate-200">{groups.group2.level}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group2.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group2.score}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group2.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group2.percent}%</td>
+                  <td className={`p-2 text-center border-r border-slate-200 font-semibold ${groups.group2.level.includes('<') ? 'text-rose-700' : 'text-emerald-700'}`}>{groups.group2.level}</td>
                   <td className="p-2 text-right">{renderRewardCell(groups.group2.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">3. กลุ่มงานเอกสารและผลิตภัณฑ์</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group3.score}</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group3.percent}%</td>
-                  <td className="p-2 text-center border-r border-slate-200">{groups.group3.level}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group3.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group3.score}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group3.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group3.percent}%</td>
+                  <td className={`p-2 text-center border-r border-slate-200 font-semibold ${groups.group3.level.includes('<') ? 'text-rose-700' : 'text-emerald-700'}`}>{groups.group3.level}</td>
                   <td className="p-2 text-right">{renderRewardCell(groups.group3.reward)}</td>
                 </tr>
                 <tr>
                   <td className="p-2 border-r border-slate-200 font-medium">4. กลุ่มงานภาพลักษณ์แบรนด์</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group4.score}</td>
-                  <td className="p-2 text-right border-r border-slate-200">{groups.group4.percent}%</td>
-                  <td className="p-2 text-center border-r border-slate-200">{groups.group4.level}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group4.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group4.score}</td>
+                  <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group4.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group4.percent}%</td>
+                  <td className={`p-2 text-center border-r border-slate-200 font-semibold ${groups.group4.level.includes('<') ? 'text-rose-700' : 'text-emerald-700'}`}>{groups.group4.level}</td>
                   <td className="p-2 text-right">{renderRewardCell(groups.group4.reward)}</td>
                 </tr>
                 {totals.specialBonus !== 0 && (

@@ -129,13 +129,17 @@ export default function MobileVehicleView({
                 {totals.totalReward < 0 ? `-฿${Math.abs(totals.totalReward).toLocaleString()}` : `฿${totals.totalReward.toLocaleString()}`}
               </div>
 
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <span className="text-xs text-slate-500 font-medium">
-                  คะแนนรวม: <strong className="text-slate-800">{totals.totalScore}</strong> ({totals.totalPercent}%)
+              <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                <span className={`text-xs px-2.5 py-0.5 rounded-lg font-bold ${
+                  totals.totalPercent >= 95 ? 'bg-emerald-100 text-emerald-800' : totals.totalPercent >= 85 ? 'bg-sky-100 text-sky-800' : 'bg-rose-100 text-rose-800'
+                }`}>
+                  คะแนนรวม: {totals.totalScore} ({totals.totalPercent}%)
                 </span>
                 <span className="text-slate-300">•</span>
-                <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                  {totals.overallLevel}
+                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-lg ${
+                  totals.overallLevel.includes('<') || totals.totalPercent < 85 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  ผลประเมิน: {totals.overallLevel}
                 </span>
               </div>
 
@@ -322,9 +326,16 @@ export default function MobileVehicleView({
                   >
                     <div>
                       <h4 className="font-bold text-xs sm:text-sm text-slate-800">{title}</h4>
-                      <span className="text-[11px] text-slate-400">
-                        {score} คะแนน • รางวัล <span className={group.reward < 0 ? 'text-rose-600 font-bold' : group.reward > 0 ? 'text-emerald-700 font-bold' : ''}>{group.reward < 0 ? `-฿${Math.abs(group.reward).toLocaleString()}` : `฿${group.reward.toLocaleString()}`}</span>
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                          group.percent >= 85 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-800 border border-rose-200'
+                        }`}>
+                          {score} คะแนน ({group.percent}%)
+                        </span>
+                        <span className={`text-[11px] font-bold ${group.reward < 0 ? 'text-rose-600' : group.reward > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                          • รางวัล {group.reward < 0 ? `-฿${Math.abs(group.reward).toLocaleString()}` : `฿${group.reward.toLocaleString()}`}
+                        </span>
+                      </div>
                     </div>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                   </button>
@@ -345,11 +356,9 @@ export default function MobileVehicleView({
                           </div>
 
                           <div className="text-right shrink-0">
-                            <div className="font-bold text-xs text-slate-800">
-                              {item.score} คะแนน
-                            </div>
+                            {renderMobileScoreBadge(item)}
                             {item.reward !== undefined && (
-                              <div className={`text-[11px] font-bold ${item.reward < 0 ? 'text-rose-600' : item.reward > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
+                              <div className={`text-[11px] font-bold mt-1 ${item.reward < 0 ? 'text-rose-600' : item.reward > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                 {item.reward < 0 ? `-฿${Math.abs(item.reward)}` : `฿${item.reward.toLocaleString()}`}
                               </div>
                             )}
@@ -409,5 +418,61 @@ export default function MobileVehicleView({
       </nav>
 
     </div>
+  );
+}
+
+function renderMobileScoreBadge(item) {
+  const { score, fullScore, status } = item;
+
+  if (score < 0) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  if (fullScore > 0) {
+    if (score >= fullScore) {
+      return (
+        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          {score}
+        </span>
+      );
+    }
+    if (score > 0) {
+      return (
+        <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+          {score}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  if (score > 0) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+        +{score}
+      </span>
+    );
+  }
+
+  if (status === 'fail') {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold text-slate-700 bg-slate-100">
+      {score}
+    </span>
   );
 }
