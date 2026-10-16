@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, ShieldCheck, ArrowRight, User, AlertCircle, Sparkles } from 'lucide-react';
+import { Truck, ArrowRight, User, AlertCircle } from 'lucide-react';
 
 export default function LoginScreen({ vehicles, onLogin, currentMonthLabel }) {
   const [inputId, setInputId] = useState('');
@@ -63,14 +63,6 @@ export default function LoginScreen({ vehicles, onLogin, currentMonthLabel }) {
     setError('ไม่พบรหัสพนักงาน หรือเบอร์รถนี้ในระบบ กรุณาตรวจสอบอีกครั้ง');
   };
 
-  // Quick login samples
-  const sampleDrivers = [
-    { car: '13101', name: 'ไกรสร', id: '90872' },
-    { car: '13104', name: 'อดิศักดิ์', id: '90651' },
-    { car: '13206', name: 'จรัสกร', id: '90823' },
-    { car: '13L11', name: 'สุทธิชัย', id: '272568' }
-  ];
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
       
@@ -113,7 +105,7 @@ export default function LoginScreen({ vehicles, onLogin, currentMonthLabel }) {
               <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="เช่น 90872 หรือ 13101"
+                placeholder="ระบุรหัสพนักงาน หรือเบอร์รถ"
                 value={inputId}
                 onChange={(e) => {
                   setInputId(e.target.value);
@@ -129,45 +121,10 @@ export default function LoginScreen({ vehicles, onLogin, currentMonthLabel }) {
             type="submit"
             className="w-full py-3 px-4 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-sky-500/25 active:scale-[0.99]"
           >
-            <span>เข้าสู่ระบบเพื่อดูรางวัล</span>
+            <span>เข้าสู่ระบบ</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
-
-        {/* Quick select samples */}
-        <div className="mt-6 pt-5 border-t border-slate-100">
-          <span className="text-[11px] font-semibold text-slate-400 block mb-2">
-            แตะเพื่อทดสอบเข้าสู่ระบบด่วน:
-          </span>
-          <div className="grid grid-cols-2 gap-1.5">
-            {sampleDrivers.map(d => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => setInputId(d.id)}
-                className="p-2 text-left bg-slate-50 hover:bg-sky-50 border border-slate-200/60 rounded-xl transition-colors text-xs"
-              >
-                <strong className="text-slate-800 font-bold block">{d.car} ({d.name})</strong>
-                <span className="text-[10px] text-slate-400">รหัส {d.id}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Supervisor bypass login */}
-          <button
-            type="button"
-            onClick={() => onLogin({
-              role: 'admin',
-              empId: 'ADMIN',
-              name: 'ผู้ดูแลสาขา / หัวหน้างาน',
-              title: 'ผู้ดูแลระบบสาขา'
-            })}
-            className="w-full mt-3 py-2 px-3 rounded-xl border border-dashed border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-sky-500" />
-            <span>เข้าสู่ระบบในฐานะหัวหน้างาน (ดูทุกเบอร์รถ)</span>
-          </button>
-        </div>
 
       </div>
 
