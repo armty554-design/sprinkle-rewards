@@ -8,11 +8,10 @@ import {
   UserX, 
   Search, 
   ShieldCheck, 
-  Phone, 
-  Truck, 
+  Briefcase, 
+  Building2, 
   Trash2, 
   AlertTriangle,
-  RefreshCw,
   Layers,
   Check
 } from 'lucide-react';
@@ -51,7 +50,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
     const updated = approveUser(userId, currentAdminName);
     setUsers(updated);
     if (onUsersChanged) onUsersChanged(updated);
-    showNotice(`อนุมัติสิทธิ์การเข้าใช้งานให้ "${name}" สำเร็จ`, 'success');
+    showNotice(`อนุมัติสิทธิ์การเข้าจัดการให้ "${name}" สำเร็จ`, 'success');
   };
 
   const handleOpenRejectModal = (userId) => {
@@ -81,10 +80,10 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
   const handleApproveAllPending = () => {
     const pendingList = users.filter(u => u.status === 'pending');
     if (pendingList.length === 0) return;
-    if (window.confirm(`ยืนยันการอนุมัติพนักงานที่รออยู่ทั้งหมด ${pendingList.length} คน?`)) {
+    if (window.confirm(`ยืนยันการอนุมัติเจ้าหน้าที่ออฟฟิศที่รออยู่ทั้งหมด ${pendingList.length} คน?`)) {
       pendingList.forEach(u => approveUser(u.id, currentAdminName));
       refreshUsers();
-      showNotice(`อนุมัติพนักงานทั้งหมด ${pendingList.length} คนเรียบร้อยแล้ว`, 'success');
+      showNotice(`อนุมัติพนักงานออฟฟิศทั้งหมด ${pendingList.length} คนเรียบร้อยแล้ว`, 'success');
     }
   };
 
@@ -92,7 +91,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
     const val = e.target.checked;
     setStrictMode(val);
     setStrictModeEnabled(val);
-    showNotice(val ? 'เปิดโหมดเข้มงวด: ต้องได้รับอนุมัติจากแอดมินก่อนทุกคน' : 'ปิดโหมดเข้มงวด: พนักงานที่มีในระบบเดิมเข้าใช้งานได้ปกติ', 'info');
+    showNotice(val ? 'เปิดโหมดเข้มงวด: เจ้าหน้าที่ทุกคนต้องได้รับการอนุมัติก่อน' : 'ปิดโหมดเข้มงวด: เจ้าหน้าที่ตามระบบเดิมเข้าได้ปกติ', 'info');
   };
 
   const showNotice = (msg, type = 'success') => {
@@ -107,9 +106,9 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
         const q = searchQuery.toLowerCase().trim();
         const empId = (u.empId || '').toLowerCase();
         const name = (u.fullName || '').toLowerCase();
-        const car = (u.carCode || '').toLowerCase();
-        const phone = (u.phone || '').toLowerCase();
-        if (!empId.includes(q) && !name.includes(q) && !car.includes(q) && !phone.includes(q)) {
+        const pos = (u.position || '').toLowerCase();
+        const branch = (u.branch || '').toLowerCase();
+        if (!empId.includes(q) && !name.includes(q) && !pos.includes(q) && !branch.includes(q)) {
           return false;
         }
       }
@@ -135,7 +134,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold">จัดการและอนุมัติสิทธิ์เข้าใช้งาน</h2>
+                <h2 className="text-base sm:text-lg font-bold">อนุมัติพนักงานออฟฟิศที่เข้าจัดการ</h2>
                 {pendingCount > 0 && (
                   <span className="bg-amber-500 text-slate-950 font-black text-xs px-2 py-0.5 rounded-full animate-pulse">
                     รออนุมัติ {pendingCount} คน
@@ -143,14 +142,14 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                 )}
               </div>
               <p className="text-xs text-slate-400">
-                ระบบตรวจสอบและอนุมัติพนักงานขนส่ง Sprinkle Delivery Rewards
+                ระบบตรวจสอบและอนุมัติสิทธิ์เข้าใช้งานสำหรับเจ้าหน้าที่ออฟฟิศ / ฝ่ายจัดการ
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -176,14 +175,14 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
               className="w-4 h-4 text-sky-600 rounded-sm border-slate-300 focus:ring-sky-500"
             />
             <span className="text-slate-700 font-medium">
-              <strong>บังคับอนุมัติทุกคน (Strict Mode):</strong> พนักงานทุกคนต้องสมัครและได้รับการอนุมัติจึงจะล็อกอินได้
+              <strong>โหมดความปลอดภัยเข้มงวด:</strong> เจ้าหน้าที่ทุกคนต้องสมัครและได้รับการอนุมัติจึงจะล็อกอินได้
             </span>
           </label>
 
           {activeTab === 'pending' && pendingCount > 1 && (
             <button
               onClick={handleApproveAllPending}
-              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
               <span>อนุมัติทั้งหมด ({pendingCount})</span>
@@ -196,7 +195,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
           <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'pending'
                   ? 'bg-white text-slate-900 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -213,7 +212,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
 
             <button
               onClick={() => setActiveTab('approved')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'approved'
                   ? 'bg-white text-slate-900 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -228,7 +227,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
 
             <button
               onClick={() => setActiveTab('rejected')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'rejected'
                   ? 'bg-white text-slate-900 shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -246,7 +245,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="ค้นหารหัส, ชื่อ, เบอร์รถ, โทร..."
+              placeholder="ค้นหารหัส, ชื่อ, ตำแหน่ง, สาขา..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
@@ -272,7 +271,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                 key={u.id}
                 className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
               >
-                {/* User Info */}
+                {/* User Info (Only: รหัส, ชื่อ นามสกุล, ตำแหน่ง, สาขา, วันที่) */}
                 <div className="space-y-1.5 grow">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black bg-sky-100 text-sky-800">
@@ -281,43 +280,23 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                     <h3 className="font-bold text-slate-900 text-sm sm:text-base">
                       {u.fullName}
                     </h3>
-                    {u.carCode && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700">
-                        <Truck className="w-3 h-3 text-sky-500" />
-                        {u.carCode}
-                      </span>
-                    )}
-                    {u.groupNumber && (
-                      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        กลุ่ม {u.groupNumber}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                    {u.phone && (
-                      <a 
-                        href={`tel:${u.phone}`} 
-                        className="flex items-center gap-1 hover:text-sky-600 transition-colors"
-                      >
-                        <Phone className="w-3 h-3 text-slate-400" />
-                        <span>{u.phone}</span>
-                      </a>
-                    )}
-                    <span>•</span>
-                    <span>สาขา: {u.branch || 'สาขา 1 (สนญ.)'}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      สมัครเมื่อ: {u.registeredAt}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      <Briefcase className="w-3 h-3 text-indigo-500" />
+                      {u.position}
                     </span>
                   </div>
 
-                  {u.note && (
-                    <div className="text-xs bg-slate-50 border border-slate-100 rounded-lg p-2 text-slate-600 mt-1">
-                      <strong className="text-slate-700">หมายเหตุ:</strong> {u.note}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>สาขา: <strong>{u.branch}</strong></span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>ยื่นคำขอ: {u.registeredAt}</span>
+                    </span>
+                  </div>
 
                   {/* Status Badges for Approved / Rejected */}
                   {u.status === 'approved' && (
@@ -341,7 +320,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                     <>
                       <button
                         onClick={() => handleApprove(u.id, u.fullName)}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs active:scale-95"
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5" />
                         <span>อนุมัติ</span>
@@ -349,7 +328,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
 
                       <button
                         onClick={() => handleOpenRejectModal(u.id)}
-                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition-colors active:scale-95"
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                         <span>ปฏิเสธ</span>
@@ -361,14 +340,14 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                     <>
                       <button
                         onClick={() => handleOpenRejectModal(u.id)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-semibold transition-colors"
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
                         title="ระงับสิทธิ์การใช้งาน"
                       >
                         ระงับสิทธิ์
                       </button>
                       <button
                         onClick={() => handleDelete(u.id, u.fullName)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         title="ลบออกจากระบบ"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -380,13 +359,13 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                     <>
                       <button
                         onClick={() => handleApprove(u.id, u.fullName)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-colors"
+                        className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer"
                       >
                         เปลี่ยนเป็นอนุมัติ
                       </button>
                       <button
                         onClick={() => handleDelete(u.id, u.fullName)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         title="ลบออกจากระบบ"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -406,7 +385,7 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors"
+            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
           >
             ปิดหน้าต่าง
           </button>

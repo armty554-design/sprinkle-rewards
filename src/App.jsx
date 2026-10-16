@@ -301,7 +301,7 @@ export default function App() {
               <span>เข้าสู่ระบบโดย: <strong>{currentUser.name}</strong> ({currentUser.role === 'driver' ? `เบอร์รถ ${currentUser.carCode}` : currentUser.title || 'หัวหน้างาน'})</span>
             </span>
             <div className="flex items-center gap-3">
-              {(currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
+              {(currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'office') && (
                 <button
                   onClick={() => setIsApprovalModalOpen(true)}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold transition-colors text-xs cursor-pointer"

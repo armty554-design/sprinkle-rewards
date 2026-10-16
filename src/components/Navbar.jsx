@@ -129,8 +129,8 @@ export default function Navbar({
                 <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
               </button>
 
-              {/* User Approval Button for Admin / Supervisor */}
-              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
+              {/* User Approval Button for Admin / Supervisor / Office */}
+              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor' || currentUser?.role === 'office') && (
                 <button
                   onClick={onOpenApprovalModal}
                   title="จัดการและอนุมัติพนักงาน"

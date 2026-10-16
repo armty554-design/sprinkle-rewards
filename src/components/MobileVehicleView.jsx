@@ -38,7 +38,7 @@ export default function MobileVehicleView({
   const { general, totals, groups, defects } = vehicle;
   const hasReward = totals.totalReward > 0;
   const hasDefects = defects.length > 0;
-  const isSupervisor = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
+  const isSupervisor = currentUser?.role === 'supervisor' || currentUser?.role === 'admin' || currentUser?.role === 'office';
 
   const groupList = [
     { key: 'g1', group: groups.group1, title: '1. กลุ่มงานจัดส่ง', score: groups.group1.score },
