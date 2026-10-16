@@ -12,7 +12,8 @@ import {
   Layers, 
   ChevronRight,
   LogOut,
-  Calendar
+  Calendar,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function MobileVehicleView({ 
@@ -25,7 +26,9 @@ export default function MobileVehicleView({
   allMonths,
   selectedMonthKey,
   onSelectMonth,
-  onPrint
+  onPrint,
+  onOpenApprovalModal,
+  pendingUsersCount = 0
 }) {
   const [mobileTab, setMobileTab] = useState('summary'); // 'summary', 'defects', 'all_items'
   const [expandedGroup, setExpandedGroup] = useState('g1');
@@ -100,22 +103,37 @@ export default function MobileVehicleView({
 
       {/* Supervisor Switcher if logged in as supervisor */}
       {isSupervisor && (
-        <div className="bg-sky-50 px-4 py-2 border-b border-sky-100 flex items-center justify-between text-xs text-sky-900">
-          <span className="font-medium">สลับดูเบอร์รถ:</span>
-          <select
-            value={vehicle.id}
-            onChange={(e) => {
-              const found = allVehicles.find(v => v.id === e.target.value);
-              if (found) onSelectVehicle(found);
-            }}
-            className="py-1 px-2.5 rounded-lg bg-white border border-sky-200 text-slate-900 font-bold text-xs"
+        <div className="bg-sky-50 px-4 py-2 border-b border-sky-100 flex items-center justify-between gap-2 text-xs text-sky-900">
+          <div className="flex items-center gap-1.5 grow min-w-0">
+            <span className="font-medium shrink-0">ดูรถ:</span>
+            <select
+              value={vehicle.id}
+              onChange={(e) => {
+                const found = allVehicles.find(v => v.id === e.target.value);
+                if (found) onSelectVehicle(found);
+              }}
+              className="py-1 px-2 rounded-lg bg-white border border-sky-200 text-slate-900 font-bold text-xs truncate max-w-[170px]"
+            >
+              {allVehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.general.carCode} - {v.general.fullName} {v.general.groupNumber ? `(กลุ่ม ${v.general.groupNumber})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={onOpenApprovalModal}
+            className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 font-bold text-xs flex items-center gap-1 shrink-0 shadow-2xs cursor-pointer active:scale-95 transition-transform"
           >
-            {allVehicles.map(v => (
-              <option key={v.id} value={v.id}>
-                {v.general.carCode} - {v.general.fullName} {v.general.groupNumber ? `(กลุ่ม ${v.general.groupNumber})` : ''}
-              </option>
-            ))}
-          </select>
+            <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+            <span>อนุมัติ</span>
+            {pendingUsersCount > 0 && (
+              <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                {pendingUsersCount}
+              </span>
+            )}
+          </button>
         </div>
       )}
 

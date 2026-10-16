@@ -11,6 +11,7 @@ import UploadNewMonthModal from './components/UploadNewMonthModal';
 import VehicleDetailModal from './components/VehicleDetailModal';
 import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
+import UserApprovalModal from './components/UserApprovalModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import { parseCSVData } from './utils/parser';
 import { 
@@ -20,7 +21,8 @@ import {
   getSelectedMonthKey, 
   setSelectedMonthKey 
 } from './utils/monthStorage';
-import { AlertCircle, CheckCircle2, LogOut, User } from 'lucide-react';
+import { getPendingUsersCount } from './utils/userManagement';
+import { AlertCircle, CheckCircle2, LogOut, User, ShieldCheck } from 'lucide-react';
 
 const STORAGE_AUTH_USER = 'sprinkle_auth_user';
 
@@ -98,8 +100,19 @@ export default function App() {
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [printVehicle, setPrintVehicle] = useState(null);
   const [isUploadNewMonthOpen, setIsUploadNewMonthOpen] = useState(false);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [pendingUsersCount, setPendingUsersCount] = useState(() => getPendingUsersCount());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Sync pending approval count on user updates
+  useEffect(() => {
+    const handleUsersUpdate = () => {
+      setPendingUsersCount(getPendingUsersCount());
+    };
+    window.addEventListener('sprinkle_users_updated', handleUsersUpdate);
+    return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
+  }, []);
 
   // Login handler
   const handleLogin = (user) => {
@@ -234,12 +247,23 @@ export default function App() {
           selectedMonthKey={selectedMonthKey}
           onSelectMonth={handleSelectMonth}
           onPrint={(v) => setPrintVehicle(v)}
+          onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
+          pendingUsersCount={pendingUsersCount}
         />
 
         {printVehicle && (
           <VehiclePrintSlip
             vehicle={printVehicle}
             onClose={() => setPrintVehicle(null)}
+          />
+        )}
+
+        {isApprovalModalOpen && (
+          <UserApprovalModal
+            isOpen={isApprovalModalOpen}
+            onClose={() => setIsApprovalModalOpen(false)}
+            currentAdminName={currentUser?.name}
+            onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
           />
         )}
       </>
@@ -264,6 +288,9 @@ export default function App() {
           onRefreshFromSheet={handleRefreshCurrentMonth}
           isRefreshing={isRefreshing}
           onOpenUploadNewMonth={() => setIsUploadNewMonthOpen(true)}
+          currentUser={currentUser}
+          onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
+          pendingUsersCount={pendingUsersCount}
         />
 
         {/* Current User Session Bar on Desktop */}
@@ -273,13 +300,29 @@ export default function App() {
               <User className="w-3.5 h-3.5 text-sky-400" />
               <span>เข้าสู่ระบบโดย: <strong>{currentUser.name}</strong> ({currentUser.role === 'driver' ? `เบอร์รถ ${currentUser.carCode}` : currentUser.title || 'หัวหน้างาน'})</span>
             </span>
-            <button
-              onClick={handleLogout}
-              className="text-slate-300 hover:text-white flex items-center gap-1 transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>ออกจากระบบ</span>
-            </button>
+            <div className="flex items-center gap-3">
+              {(currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
+                <button
+                  onClick={() => setIsApprovalModalOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold transition-colors text-xs cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                  <span>จัดการอนุมัติพนักงาน</span>
+                  {pendingUsersCount > 0 && (
+                    <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                      {pendingUsersCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={handleLogout}
+                className="text-slate-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>ออกจากระบบ</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -436,6 +479,15 @@ export default function App() {
         <UploadNewMonthModal
           onClose={() => setIsUploadNewMonthOpen(false)}
           onMonthAdded={handleMonthAdded}
+        />
+      )}
+
+      {isApprovalModalOpen && (
+        <UserApprovalModal
+          isOpen={isApprovalModalOpen}
+          onClose={() => setIsApprovalModalOpen(false)}
+          currentAdminName={currentUser?.name}
+          onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
         />
       )}
 

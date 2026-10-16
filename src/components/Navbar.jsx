@@ -8,7 +8,8 @@ import {
   Table as TableIcon,
   Calendar,
   Layers,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -22,7 +23,10 @@ export default function Navbar({
   setActiveTab, 
   onRefreshFromSheet, 
   isRefreshing, 
-  onOpenUploadNewMonth 
+  onOpenUploadNewMonth,
+  currentUser,
+  onOpenApprovalModal,
+  pendingUsersCount = 0
 }) {
   return (
     <header className="bg-white border-b border-slate-100 sticky top-0 z-30 no-print">
@@ -116,15 +120,32 @@ export default function Navbar({
             </div>
 
             {/* Sync button */}
-            <button
-              onClick={onRefreshFromSheet}
-              disabled={isRefreshing}
-              title="ซิงค์ข้อมูลชีต"
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-            >
-              <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
-            </button>
-          </div>
+              <button
+                onClick={onRefreshFromSheet}
+                disabled={isRefreshing}
+                title="ซิงค์ข้อมูลชีต"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
+              </button>
+
+              {/* User Approval Button for Admin / Supervisor */}
+              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
+                <button
+                  onClick={onOpenApprovalModal}
+                  title="จัดการและอนุมัติพนักงาน"
+                  className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-bold flex items-center gap-1.5 transition-all border border-sky-200/80 shadow-2xs cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+                  <span className="hidden sm:inline">อนุมัติพนักงาน</span>
+                  {pendingUsersCount > 0 && (
+                    <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                      {pendingUsersCount}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
 
         </div>
       </div>
