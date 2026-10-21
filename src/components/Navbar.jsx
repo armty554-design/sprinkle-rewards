@@ -12,7 +12,8 @@ import {
   ShieldCheck,
   Database,
   Building2,
-  TrendingUp
+  TrendingUp,
+  ClipboardCheck
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -140,6 +141,20 @@ export default function Navbar({
                 <TrendingUp className={`w-3.5 h-3.5 ${activeTab === 'executive' ? 'text-sky-400' : 'text-slate-500'}`} />
                 <span className="hidden lg:inline">เปรียบเทียบผู้บริหาร</span>
                 <span className="lg:hidden">ผู้บริหาร</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('audit')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'audit'
+                    ? 'bg-sky-600 text-white font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="ตรวจสอบการบันทึกข้อมูลของทุกสาขา (อิงข้อมูลพนักงานออฟฟิศ)"
+              >
+                <ClipboardCheck className={`w-3.5 h-3.5 ${activeTab === 'audit' ? 'text-white' : 'text-slate-500'}`} />
+                <span className="hidden xl:inline">ตรวจสอบบันทึกข้อมูล</span>
+                <span className="xl:hidden hidden sm:inline">ตรวจบันทึก</span>
               </button>
             </div>
 

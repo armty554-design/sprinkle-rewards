@@ -15,9 +15,11 @@ import {
   Calendar,
   ShieldCheck,
   Database,
-  TrendingUp
+  TrendingUp,
+  ClipboardCheck
 } from 'lucide-react';
 import ExecutiveComparisonView from './ExecutiveComparisonView';
+import BranchSubmissionAuditView from './BranchSubmissionAuditView';
 
 export default function MobileVehicleView({ 
   vehicle, 
@@ -433,6 +435,20 @@ export default function MobileVehicleView({
           </div>
         )}
 
+        {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW */}
+        {mobileTab === 'audit' && isSupervisor && currentMonthData && (
+          <div className="space-y-4">
+            <BranchSubmissionAuditView
+              data={currentMonthData}
+              allMonthsList={allMonths}
+              selectedMonthKey={selectedMonthKey}
+              onSelectMonth={onSelectMonth}
+              currentUser={currentUser}
+              onOpenUploadModal={onOpenUploadModal}
+            />
+          </div>
+        )}
+
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
@@ -478,12 +494,25 @@ export default function MobileVehicleView({
         {isSupervisor && (
           <button
             onClick={() => setMobileTab('executive')}
-            className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
+            className={`flex flex-col items-center py-1 px-2.5 rounded-xl transition-colors ${
               mobileTab === 'executive' ? 'text-slate-900 font-bold' : 'text-slate-400'
             }`}
           >
             <TrendingUp className="w-5 h-5 mb-0.5 text-sky-500" />
             <span className="text-[10px]">ผู้บริหาร</span>
+          </button>
+        )}
+
+        {/* Tab 5: ตรวจบันทึก (เฉพาะหัวหน้างาน / แอดมิน / ออฟฟิศ) */}
+        {isSupervisor && (
+          <button
+            onClick={() => setMobileTab('audit')}
+            className={`flex flex-col items-center py-1 px-2.5 rounded-xl transition-colors ${
+              mobileTab === 'audit' ? 'text-sky-700 font-bold' : 'text-slate-400'
+            }`}
+          >
+            <ClipboardCheck className="w-5 h-5 mb-0.5 text-sky-600" />
+            <span className="text-[10px]">ตรวจบันทึก</span>
           </button>
         )}
 

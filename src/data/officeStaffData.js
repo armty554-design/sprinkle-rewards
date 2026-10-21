@@ -1143,3 +1143,25 @@ export const OFFICE_BRANCH_LIST = [
   'ยิ่งโอฬาร',
   'สาขา 1 (สนญ.)'
 ];
+
+/**
+ * Get operational branches derived exclusively from office staff data,
+ * excluding 'สำนักงาน' and 'สาขา 1 (สนญ.)'.
+ */
+export function getOperationalBranches() {
+  const branches = Array.from(new Set(
+    OFFICE_STAFF_LIST
+      .map(s => (s.branch || '').trim())
+      .filter(b => b && !b.includes('สำนักงาน') && !b.includes('สนญ.'))
+  )).sort((a, b) => a.localeCompare(b, 'th'));
+  return branches;
+}
+
+/**
+ * Get all office staff assigned to a specific branch
+ */
+export function getBranchOfficeStaff(branchName) {
+  if (!branchName) return [];
+  const target = String(branchName).trim();
+  return OFFICE_STAFF_LIST.filter(s => (s.branch || '').trim() === target);
+}

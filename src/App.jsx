@@ -12,6 +12,7 @@ import VehicleDetailModal from './components/VehicleDetailModal';
 import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
 import ExecutiveComparisonView from './components/ExecutiveComparisonView';
+import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -440,8 +441,8 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บผู้บริหารเพื่อความกระชับ) */}
-        {activeTab !== 'executive' && (
+        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บผู้บริหารหรือแท็บตรวจบันทึกเพื่อความกระชับ) */}
+        {activeTab !== 'executive' && activeTab !== 'audit' && (
           <DashboardStats 
             summary={activeSummary} 
             onFilterChange={(key, val) => {
@@ -554,6 +555,22 @@ export default function App() {
             currentUser={currentUser}
             onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
             onOpenDataManager={() => setIsDataManagerOpen(true)}
+          />
+        )}
+
+        {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW */}
+        {activeTab === 'audit' && (
+          <BranchSubmissionAuditView
+            data={data}
+            allMonthsList={allMonthsList}
+            selectedMonthKey={selectedMonthKey}
+            onSelectMonth={handleSelectMonth}
+            currentUser={currentUser}
+            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+            onFilterBranchAndNavigate={(branchName) => {
+              setSelectedBranch(branchName);
+              setActiveTab('vehicles');
+            }}
           />
         )}
 
