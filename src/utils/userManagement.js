@@ -65,14 +65,12 @@ export function findRegisteredUser(query) {
   ) || null;
 }
 
-export function registerOfficeUser({ empId, firstName, lastName, position, branch }) {
+export function registerOfficeUser({ empId, fullName, firstName = '', lastName = '', position, branch }) {
   const users = getRegisteredUsers();
   const cleanEmpId = empId.trim();
-  const cleanFirst = firstName.trim();
-  const cleanLast = lastName.trim();
+  const cleanFullName = (fullName || `${firstName} ${lastName}`).trim();
   const cleanPos = position.trim();
   const cleanBranch = branch.trim();
-  const fullName = `${cleanFirst} ${cleanLast}`;
 
   // Check if this empId is already registered
   const existingIndex = users.findIndex(u => u.empId.toLowerCase() === cleanEmpId.toLowerCase());
@@ -103,12 +101,11 @@ export function registerOfficeUser({ empId, firstName, lastName, position, branc
     // If was rejected, update and resubmit as pending
     users[existingIndex] = {
       ...existing,
-      firstName: cleanFirst,
-      lastName: cleanLast,
-      fullName,
+      fullName: cleanFullName,
       position: cleanPos,
       branch: cleanBranch,
       role: 'office',
+      canUpload: true,
       status: 'pending',
       registeredAt: thaiDate,
       rejectReason: null
@@ -124,12 +121,11 @@ export function registerOfficeUser({ empId, firstName, lastName, position, branc
   const newUser = {
     id: 'user_' + Date.now(),
     empId: cleanEmpId,
-    firstName: cleanFirst,
-    lastName: cleanLast,
-    fullName,
+    fullName: cleanFullName,
     position: cleanPos,
     branch: cleanBranch,
-    role: 'office', // Office management role
+    role: 'office', // Office management role with upload rights
+    canUpload: true,
     status: 'pending', // always pending until admin approves
     registeredAt: thaiDate,
     approvedAt: null,
@@ -145,6 +141,61 @@ export function registerOfficeUser({ empId, firstName, lastName, position, branc
     message: 'ลงทะเบียนสำเร็จ! ข้อมูลของคุณถูกส่งไปยังผู้ดูแลระบบเรียบร้อยแล้ว กรุณารอแอดมินอนุมัติก่อนเข้าใช้งาน',
     user: newUser
   };
+}
+
+export function addOfficeUserDirectly({ empId, fullName, position, branch, adminName = 'ผู้ดูแลระบบ' }) {
+  const users = getRegisteredUsers();
+  const cleanEmpId = empId.trim();
+  const cleanFullName = fullName.trim();
+  const cleanPos = position.trim();
+  const cleanBranch = branch.trim();
+
+  const now = new Date();
+  const thaiDate = now.toLocaleDateString('th-TH', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const existingIndex = users.findIndex(u => u.empId.toLowerCase() === cleanEmpId.toLowerCase());
+  let userObj;
+
+  if (existingIndex !== -1) {
+    users[existingIndex] = {
+      ...users[existingIndex],
+      fullName: cleanFullName,
+      position: cleanPos,
+      branch: cleanBranch,
+      role: 'office',
+      canUpload: true,
+      status: 'approved',
+      approvedAt: thaiDate,
+      approvedBy: adminName,
+      rejectReason: null
+    };
+    userObj = users[existingIndex];
+  } else {
+    userObj = {
+      id: 'user_' + Date.now(),
+      empId: cleanEmpId,
+      fullName: cleanFullName,
+      position: cleanPos,
+      branch: cleanBranch,
+      role: 'office',
+      canUpload: true,
+      status: 'approved',
+      registeredAt: thaiDate,
+      approvedAt: thaiDate,
+      approvedBy: adminName,
+      rejectReason: null
+    };
+    users.unshift(userObj);
+  }
+
+  saveRegisteredUsers(users);
+  return { success: true, user: userObj, users };
 }
 
 export function approveUser(userId, adminName = 'ผู้ดูแลระบบ') {

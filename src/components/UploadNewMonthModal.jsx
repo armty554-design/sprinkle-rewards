@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw } from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { parseCSVData } from '../utils/parser';
 
-export default function UploadNewMonthModal({ onClose, onMonthAdded }) {
+export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser }) {
   const [monthKey, setMonthKey] = useState('');
   const [monthLabel, setMonthLabel] = useState('');
   const [note, setNote] = useState('');
@@ -112,7 +112,12 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded }) {
     const finalKey = monthKey.trim() || `month_${Date.now()}`;
     const finalLabel = monthLabel.trim() || preview?.meta?.month || finalKey;
 
-    onMonthAdded(finalKey, finalLabel, csvContent, note);
+    const uploaderInfo = currentUser?.name 
+      ? ` (อัพโหลดโดย: ${currentUser.name}${currentUser.empId ? ` [${currentUser.empId}]` : ''})` 
+      : '';
+    const finalNote = (note ? `${note}${uploaderInfo}` : `อัพโหลดโดย: ${currentUser?.name || 'แอดมิน'}`).trim();
+
+    onMonthAdded(finalKey, finalLabel, csvContent, finalNote);
     onClose();
   };
 
@@ -146,6 +151,25 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded }) {
             <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* Office Staff Uploader Identity */}
+          {currentUser && (
+            <div className="p-3 bg-sky-50/80 border border-sky-100 rounded-xl flex items-center justify-between text-xs text-sky-950">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-700 flex items-center justify-center shrink-0">
+                  <Briefcase className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] text-sky-700 font-medium block">เจ้าหน้าที่ออฟฟิศผู้อัปโหลด:</span>
+                  <strong className="text-slate-900">{currentUser.name}</strong>
+                  <span className="text-slate-500 ml-1.5">(รหัส {currentUser.empId} • {currentUser.title || currentUser.position || 'ฝ่ายจัดการ'}{currentUser.branch ? ` • ${currentUser.branch}` : ''})</span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-md bg-sky-200/70 text-sky-900 font-bold text-[10px] shrink-0">
+                สิทธิ์อัพโหลด
+              </span>
             </div>
           )}
 

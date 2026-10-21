@@ -68,15 +68,17 @@ export default function Navbar({
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
             </div>
 
-            {/* Upload New Month Button */}
-            <button
-              onClick={onOpenUploadNewMonth}
-              title="นำเข้าไฟล์เดือนใหม่"
-              className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">เพิ่มเดือนใหม่</span>
-            </button>
+            {/* Upload New Month Button (เฉพาะรหัสออฟฟิศ / แอดมิน / หัวหน้างาน) */}
+            {(currentUser?.role === 'office' || currentUser?.role === 'admin' || currentUser?.role === 'supervisor') && (
+              <button
+                onClick={onOpenUploadNewMonth}
+                title="นำเข้าไฟล์เดือนใหม่ (เฉพาะรหัสออฟฟิศ/แอดมิน)"
+                className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">เพิ่มเดือนใหม่</span>
+              </button>
+            )}
           </div>
 
           {/* Navigation Tabs */}

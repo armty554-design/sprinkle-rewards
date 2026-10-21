@@ -479,6 +479,7 @@ export default function App() {
         <UploadNewMonthModal
           onClose={() => setIsUploadNewMonthOpen(false)}
           onMonthAdded={handleMonthAdded}
+          currentUser={currentUser}
         />
       )}
 

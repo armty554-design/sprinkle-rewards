@@ -13,7 +13,9 @@ import {
   Trash2, 
   AlertTriangle,
   Layers,
-  Check
+  Check,
+  UserPlus,
+  Upload
 } from 'lucide-react';
 import { 
   getRegisteredUsers, 
@@ -21,7 +23,8 @@ import {
   rejectUser, 
   deleteUser, 
   isStrictModeEnabled, 
-  setStrictModeEnabled 
+  setStrictModeEnabled,
+  addOfficeUserDirectly
 } from '../utils/userManagement';
 
 export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 'ผู้ดูแลระบบ', onUsersChanged }) {
@@ -32,6 +35,13 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
   const [rejectingUserId, setRejectingUserId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [actionNotice, setActionNotice] = useState(null);
+
+  // Direct Add Office User State
+  const [isAddOfficeModalOpen, setIsAddOfficeModalOpen] = useState(false);
+  const [newEmpId, setNewEmpId] = useState('');
+  const [newFullName, setNewFullName] = useState('');
+  const [newPosition, setNewPosition] = useState('เจ้าหน้าที่ธุรการโลจิสติกส์');
+  const [newBranch, setNewBranch] = useState('สาขา 1 (สนญ.)');
 
   const refreshUsers = () => {
     const list = getRegisteredUsers();
@@ -84,6 +94,44 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
       pendingList.forEach(u => approveUser(u.id, currentAdminName));
       refreshUsers();
       showNotice(`อนุมัติพนักงานออฟฟิศทั้งหมด ${pendingList.length} คนเรียบร้อยแล้ว`, 'success');
+    }
+  };
+
+  const handleAddOfficeDirect = (e) => {
+    e.preventDefault();
+    if (!newEmpId.trim()) {
+      showNotice('กรุณาระบุรหัสพนักงาน/รหัสออฟฟิศ', 'error');
+      return;
+    }
+    if (!newFullName.trim()) {
+      showNotice('กรุณาระบุชื่อ-นามสกุล', 'error');
+      return;
+    }
+    if (!newPosition.trim()) {
+      showNotice('กรุณาระบุตำแหน่ง', 'error');
+      return;
+    }
+    if (!newBranch.trim()) {
+      showNotice('กรุณาระบุสาขา', 'error');
+      return;
+    }
+
+    const res = addOfficeUserDirectly({
+      empId: newEmpId,
+      fullName: newFullName,
+      position: newPosition,
+      branch: newBranch,
+      adminName: currentAdminName
+    });
+
+    if (res.success) {
+      setUsers(res.users);
+      if (onUsersChanged) onUsersChanged(res.users);
+      setActiveTab('approved');
+      setIsAddOfficeModalOpen(false);
+      setNewEmpId('');
+      setNewFullName('');
+      showNotice(`เพิ่มรหัสออฟฟิศ "${newFullName}" สำเร็จ (อนุมัติสิทธิ์อัพโหลดข้อมูลเรียบร้อย)`, 'success');
     }
   };
 
@@ -179,15 +227,25 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
             </span>
           </label>
 
-          {activeTab === 'pending' && pendingCount > 1 && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleApproveAllPending}
-              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+              onClick={() => setIsAddOfficeModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95"
             >
-              <Check className="w-3.5 h-3.5" />
-              <span>อนุมัติทั้งหมด ({pendingCount})</span>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ เพิ่มรหัสออฟฟิศ เพื่ออัพโหลด</span>
             </button>
-          )}
+
+            {activeTab === 'pending' && pendingCount > 1 && (
+              <button
+                onClick={handleApproveAllPending}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>อนุมัติทั้งหมด ({pendingCount})</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs and Search Bar */}
@@ -264,6 +322,13 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
               <p className="text-xs text-slate-400 mt-0.5">
                 {activeTab === 'pending' ? 'ไม่มีคำขอที่รอการอนุมัติอยู่ในขณะนี้' : 'ยังไม่มีข้อมูล'}
               </p>
+              <button
+                onClick={() => setIsAddOfficeModalOpen(true)}
+                className="mt-3 px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ เพิ่มรหัสออฟฟิศ เพื่ออัพโหลด</span>
+              </button>
             </div>
           ) : (
             filteredUsers.map((u) => (
@@ -283,6 +348,10 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
                       <Briefcase className="w-3 h-3 text-indigo-500" />
                       {u.position}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                      <Upload className="w-2.5 h-2.5" />
+                      <span>สิทธิ์อัพโหลด</span>
                     </span>
                   </div>
 
@@ -426,6 +495,123 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                 ยืนยันปฏิเสธ
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Direct Add Office User Modal Dialog */}
+      {isAddOfficeModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center font-bold">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">
+                    เพิ่มรหัสออฟฟิศ เพื่ออัพโหลด
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    เปิดสิทธิ์การใช้งานและอัพโหลดข้อมูลทันที
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddOfficeModalOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddOfficeDirect} className="space-y-3.5">
+              {/* 1. รหัส */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  รหัสพนักงาน / รหัสออฟฟิศ <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="ระบุรหัสพนักงาน เช่น 10045"
+                  value={newEmpId}
+                  onChange={(e) => setNewEmpId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {/* 2. ชื่อ-นามสกุล */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ชื่อ - นามสกุล <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="ระบุชื่อจริงและนามสกุล"
+                  value={newFullName}
+                  onChange={(e) => setNewFullName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                  required
+                />
+              </div>
+
+              {/* 3. ตำแหน่ง */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ตำแหน่ง <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="ระบุตำแหน่ง เช่น เจ้าหน้าที่ธุรการ, ผู้จัดการ"
+                  value={newPosition}
+                  onChange={(e) => setNewPosition(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                  required
+                />
+              </div>
+
+              {/* 4. สาขา */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  สาขา <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newBranch}
+                  onChange={(e) => setNewBranch(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 bg-white"
+                  required
+                >
+                  <option value="สาขา 1 (สนญ.)">สาขา 1 (สนญ.)</option>
+                  <option value="สาขา 2 (บางพลี)">สาขา 2 (บางพลี)</option>
+                  <option value="สาขา 3 (พุทธมณฑล)">สาขา 3 (พุทธมณฑล)</option>
+                  <option value="สาขา 4 (รังสิต)">สาขา 4 (รังสิต)</option>
+                  <option value="สำนักงานใหญ่">สำนักงานใหญ่</option>
+                </select>
+              </div>
+
+              <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl text-[11px] text-sky-800 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                <span>รหัสนี้จะได้รับสิทธิ์ <strong>อนุมัติทันที</strong> สามารถใช้รหัสเข้าสู่ระบบเพื่อจัดการข้อมูลและอัพโหลดไฟล์ได้ทันที</span>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddOfficeModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white shadow-xs transition-colors cursor-pointer"
+                >
+                  บันทึกและเปิดสิทธิ์ทันที
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

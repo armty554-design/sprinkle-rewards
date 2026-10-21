@@ -22,10 +22,9 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
   const [inputId, setInputId] = useState('');
   const [error, setError] = useState('');
   
-  // Registration Form State (Office Management only: รหัส, ชื่อ, นามสกุล, ตำแหน่ง, สาขา)
+  // Registration Form State (Office Management: รหัส, ชื่อ-นามสกุล, ตำแหน่ง, สาขา)
   const [regEmpId, setRegEmpId] = useState('');
-  const [regFirstName, setRegFirstName] = useState('');
-  const [regLastName, setRegLastName] = useState('');
+  const [regFullName, setRegFullName] = useState('');
   const [regPosition, setRegPosition] = useState('');
   const [regBranch, setRegBranch] = useState('สาขา 1 (สนญ.)');
   const [registeredUserObj, setRegisteredUserObj] = useState(null);
@@ -122,15 +121,11 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
     setError('');
 
     if (!regEmpId.trim()) {
-      setError('กรุณาระบุรหัสพนักงาน');
+      setError('กรุณาระบุรหัสพนักงาน/รหัสออฟฟิศ');
       return;
     }
-    if (!regFirstName.trim()) {
-      setError('กรุณาระบุชื่อ');
-      return;
-    }
-    if (!regLastName.trim()) {
-      setError('กรุณาระบุนามสกุล');
+    if (!regFullName.trim()) {
+      setError('กรุณาระบุชื่อ - นามสกุล');
       return;
     }
     if (!regPosition.trim()) {
@@ -144,8 +139,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
 
     const res = registerOfficeUser({
       empId: regEmpId,
-      firstName: regFirstName,
-      lastName: regLastName,
+      fullName: regFullName,
       position: regPosition,
       branch: regBranch
     });
@@ -277,10 +271,10 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
             </div>
 
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-              {/* 1. รหัสพนักงาน */}
+              {/* 1. รหัสพนักงาน / รหัสออฟฟิศ */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  รหัสพนักงาน <span className="text-rose-500">*</span>
+                  รหัสพนักงาน / รหัสออฟฟิศ <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -293,35 +287,19 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                 />
               </div>
 
-              {/* 2. ชื่อ & 3. นามสกุล */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ชื่อ <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="ระบุชื่อจริง"
-                    value={regFirstName}
-                    onChange={(e) => setRegFirstName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    นามสกุล <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="ระบุนามสกุล"
-                    value={regLastName}
-                    onChange={(e) => setRegLastName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    required
-                  />
-                </div>
+              {/* 2. ชื่อ - นามสกุล */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ชื่อ - นามสกุล <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="ระบุชื่อจริงและนามสกุล"
+                  value={regFullName}
+                  onChange={(e) => setRegFullName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                  required
+                />
               </div>
 
               {/* 4. ตำแหน่ง */}
