@@ -22,10 +22,15 @@ export default function SingleVehicleView({
   currentMonthLabel 
 }) {
   const [search, setSearch] = useState('');
+  const [branchFilter, setBranchFilter] = useState('all');
   const [zoneFilter, setZoneFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [filterDefectsOnly, setFilterDefectsOnly] = useState(false);
   const [activeGroupFilter, setActiveGroupFilter] = useState('all');
+
+  const branches = useMemo(() => {
+    return Array.from(new Set(vehicles.map(v => v.general.branch).filter(Boolean))).sort();
+  }, [vehicles]);
 
   const zones = useMemo(() => {
     return Array.from(new Set(vehicles.map(v => v.general.zone).filter(Boolean))).sort();
@@ -42,6 +47,7 @@ export default function SingleVehicleView({
 
   const filteredList = useMemo(() => {
     return vehicles.filter(v => {
+      if (branchFilter !== 'all' && v.general.branch !== branchFilter) return false;
       if (zoneFilter !== 'all' && v.general.zone !== zoneFilter) return false;
       if (groupFilter !== 'all' && v.general.groupNumber !== groupFilter) return false;
       if (search) {
@@ -52,7 +58,7 @@ export default function SingleVehicleView({
       }
       return true;
     });
-  }, [vehicles, search, zoneFilter, groupFilter]);
+  }, [vehicles, search, branchFilter, zoneFilter, groupFilter]);
 
   const currentVehicle = useMemo(() => {
     if (!selectedVehicleId) return filteredList[0] || vehicles[0];
@@ -137,7 +143,7 @@ export default function SingleVehicleView({
             <span className="text-xs text-slate-400 font-medium">{currentMonthLabel}</span>
           </div>
 
-          {/* Search & Zone */}
+          {/* Search & Branch & Zone */}
           <div className="space-y-2 mb-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -149,6 +155,20 @@ export default function SingleVehicleView({
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200/80 bg-slate-50/50 focus:bg-white focus:outline-hidden focus:border-sky-500 transition-colors"
               />
             </div>
+
+            {branches.length > 1 && (
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="w-full py-1.5 px-2.5 text-xs rounded-xl border border-sky-200 bg-sky-50/80 font-bold text-sky-900 cursor-pointer"
+              >
+                <option value="all">ทุกสาขา ({branches.length} สาขา)</option>
+                {branches.map(b => (
+                  <option key={b} value={b}>สาขา {b}</option>
+                ))}
+              </select>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={zoneFilter}
@@ -201,6 +221,12 @@ export default function SingleVehicleView({
                         {v.general.fullName}
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                        {branches.length > 1 && v.general.branch && (
+                          <>
+                            <span className="font-semibold text-sky-700 bg-sky-50 px-1 rounded">{v.general.branch}</span>
+                            <span>•</span>
+                          </>
+                        )}
                         <span>{v.general.zone}</span>
                         {v.general.groupNumber && (
                           <>

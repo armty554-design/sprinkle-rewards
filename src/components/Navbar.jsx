@@ -9,7 +9,9 @@ import {
   Calendar,
   Layers,
   ChevronDown,
-  ShieldCheck
+  ShieldCheck,
+  Database,
+  Building2
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -26,7 +28,10 @@ export default function Navbar({
   onOpenUploadNewMonth,
   currentUser,
   onOpenApprovalModal,
-  pendingUsersCount = 0
+  pendingUsersCount = 0,
+  onOpenDataManager,
+  selectedBranch = 'all',
+  branches = []
 }) {
   return (
     <header className="bg-white border-b border-slate-100 sticky top-0 z-30 no-print">
@@ -46,7 +51,9 @@ export default function Navbar({
                   รางวัลมาตรฐาน
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">สาขา {meta.branch}</p>
+              <p className="text-[11px] text-slate-400">
+                สาขา {selectedBranch !== 'all' ? selectedBranch : (branches.length > 1 ? branches.join(', ') : meta.branch)}
+              </p>
             </div>
           </div>
 
@@ -130,6 +137,18 @@ export default function Navbar({
               >
                 <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
               </button>
+
+              {/* Data Management Button for Admin / Supervisor / Office */}
+              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor' || currentUser?.role === 'office') && (
+                <button
+                  onClick={onOpenDataManager}
+                  title="จัดการข้อมูลและสาขา"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Database className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden md:inline">จัดการข้อมูล</span>
+                </button>
+              )}
 
               {/* User Approval Button for Admin / Supervisor / Office */}
               {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor' || currentUser?.role === 'office') && (

@@ -54,7 +54,12 @@ export default function VehicleCard({ vehicle, onSelect, onPrint }) {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center space-x-2 text-xs text-slate-500 mt-0.5">
+                <div className="flex items-center space-x-2 text-xs text-slate-500 mt-0.5 flex-wrap gap-y-1">
+                  {general.branch && (
+                    <span className="font-bold text-sky-700 bg-sky-50 border border-sky-200/60 px-1.5 py-0.2 rounded text-[10px]">
+                      สาขา {general.branch}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
                     <User className="w-3 h-3" />
                     รหัส {general.empId}

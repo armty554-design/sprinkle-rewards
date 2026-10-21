@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck } from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck, Layers, GitMerge } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { parseCSVData } from '../utils/parser';
 
@@ -14,6 +14,13 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
   const [tab, setTab] = useState('file'); // 'file' or 'sheet'
   const [sheetUrl, setSheetUrl] = useState('');
 
+  // Multi-sheet Excel state
+  const [workbook, setWorkbook] = useState(null);
+  const [sheetNames, setSheetNames] = useState([]);
+  const [selectedSheetName, setSelectedSheetName] = useState('');
+  const [importMode, setImportMode] = useState('merge'); // 'merge' (default) or 'replace'
+  const [fileName, setFileName] = useState('');
+
   // Handle file select
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -21,6 +28,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
 
     setError('');
     setIsLoading(true);
+    setFileName(file.name);
 
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const reader = new FileReader();
@@ -29,10 +37,20 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       reader.onload = (evt) => {
         try {
           const data = evt.target?.result;
-          const workbook = XLSX.read(data, { type: 'binary' });
-          const firstSheet = workbook.SheetNames[0];
-          const text = XLSX.utils.sheet_to_csv(workbook.Sheets[firstSheet]);
-          processCsv(text, file.name);
+          const wb = XLSX.read(data, { type: 'binary' });
+          setWorkbook(wb);
+          setSheetNames(wb.SheetNames || []);
+
+          // Pick the best sheet: prefer 2569-09 or latest or first
+          const targetSheet = (wb.SheetNames || []).find(s => s === '2569-09') || wb.SheetNames[wb.SheetNames.length - 1] || wb.SheetNames[0];
+          setSelectedSheetName(targetSheet);
+
+          if (targetSheet && wb.Sheets[targetSheet]) {
+            const text = XLSX.utils.sheet_to_csv(wb.Sheets[targetSheet]);
+            processCsv(text, file.name, targetSheet);
+          } else {
+            setIsLoading(false);
+          }
         } catch (err) {
           setError('ไม่สามารถอ่านไฟล์ Excel ได้: ' + err.message);
           setIsLoading(false);
@@ -40,6 +58,9 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       };
       reader.readAsBinaryString(file);
     } else {
+      setWorkbook(null);
+      setSheetNames([]);
+      setSelectedSheetName('');
       reader.onload = (evt) => {
         try {
           const text = evt.target?.result;
@@ -53,24 +74,52 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
     }
   };
 
-  const processCsv = (text, fileName) => {
+  const handleSheetSwitch = (sheetName) => {
+    if (!workbook || !workbook.Sheets[sheetName]) return;
+    setSelectedSheetName(sheetName);
+    setIsLoading(true);
+    try {
+      const text = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+      processCsv(text, fileName, sheetName);
+    } catch (err) {
+      setError('ไม่สามารถแปลงข้อมูลแผ่นงานนี้ได้: ' + err.message);
+      setIsLoading(false);
+    }
+  };
+
+  const processCsv = (text, fName, sheetName = '') => {
     try {
       const parsed = parseCSVData(text);
       setCsvContent(text);
       setPreview(parsed);
       
-      // Auto deduce month from data or filename
-      if (!monthLabel && parsed.meta.month) {
-        setMonthLabel(parsed.meta.month);
-      }
-      if (!monthKey) {
-        // Try to generate 2569-10 format
-        const match = (parsed.meta.month || fileName).match(/([0-9]{4})[-_]([0-9]{2})/);
-        if (match) {
-          setMonthKey(`${match[1]}-${match[2]}`);
+      // Auto deduce month from sheetName, data, or filename
+      const sourceStr = sheetName || parsed.meta.month || fName;
+      const match = sourceStr.match(/([0-9]{4})[-_]([0-9]{2})/) || sourceStr.match(/([0-9]{2})[-_]([0-9]{4})/);
+      
+      let deducedKey = '';
+      if (match) {
+        if (match[1].length === 4) {
+          deducedKey = `${match[1]}-${match[2]}`;
         } else {
-          setMonthKey(`month_${Date.now()}`);
+          deducedKey = `${match[2]}-${match[1]}`;
         }
+      }
+
+      if (deducedKey) {
+        setMonthKey(deducedKey);
+        // Deduce Thai month label from key
+        const [y, m] = deducedKey.split('-');
+        const monthNames = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        const mNum = parseInt(m, 10);
+        if (mNum >= 1 && mNum <= 12) {
+          setMonthLabel(`${monthNames[mNum]} ${y}`);
+        } else {
+          setMonthLabel(sheetName || parsed.meta.month || deducedKey);
+        }
+      } else {
+        if (!monthLabel && parsed.meta.month) setMonthLabel(parsed.meta.month);
+        if (!monthKey) setMonthKey(`month_${Date.now()}`);
       }
     } catch (err) {
       setError('ข้อมูลในไฟล์ไม่ตรงตามรูปแบบ: ' + err.message);
@@ -117,7 +166,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       : '';
     const finalNote = (note ? `${note}${uploaderInfo}` : `อัพโหลดโดย: ${currentUser?.name || 'แอดมิน'}`).trim();
 
-    onMonthAdded(finalKey, finalLabel, csvContent, finalNote);
+    onMonthAdded(finalKey, finalLabel, csvContent, finalNote, importMode);
     onClose();
   };
 
@@ -270,6 +319,74 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
             </div>
           )}
 
+          {/* Multi-Sheet Selector for Excel files */}
+          {sheetNames.length > 1 && (
+            <div className="p-3.5 bg-indigo-50/80 border border-indigo-100 rounded-xl space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-indigo-900 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-indigo-600" />
+                  <span>ตรวจพบแผ่นงานในไฟล์ทั้งหมด {sheetNames.length} แผ่นงาน:</span>
+                </span>
+                <span className="text-[11px] text-indigo-600">เลือกแผ่นงานที่ต้องการนำเข้า</span>
+              </div>
+              <select
+                value={selectedSheetName}
+                onChange={(e) => handleSheetSwitch(e.target.value)}
+                className="w-full py-2 px-3 text-xs rounded-lg border border-indigo-200 bg-white font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500"
+              >
+                {sheetNames.map((name) => (
+                  <option key={name} value={name}>
+                    แผ่นงาน: {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Import Mode Selector: Merge vs Replace */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-700">
+              รูปแบบการนำเข้าข้อมูลสาขา
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setImportMode('merge')}
+                className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                  importMode === 'merge'
+                    ? 'border-sky-500 bg-sky-50/80 text-sky-950 font-bold ring-2 ring-sky-500/20'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <GitMerge className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span className="font-bold">รวมข้อมูลสาขา (แนะนำ)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                  เพิ่มข้อมูลสาขานี้เข้าไปในเดือนที่มีอยู่แล้วโดยไม่ลบสาขาเดิม (ดูพร้อมกันได้หลายสาขา)
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setImportMode('replace')}
+                className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                  importMode === 'replace'
+                    ? 'border-amber-500 bg-amber-50/80 text-amber-950 font-bold ring-2 ring-amber-500/20'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <RotateCw className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span className="font-bold">แทนที่ข้อมูลเดิม / สร้างใหม่</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                  บันทึกทับข้อมูลเดือนนี้ทั้งหมด หรือสร้างเป็นเดือนใหม่แยกต่างหาก
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Preview Card if File loaded */}
           {preview && (
             <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 text-xs">
@@ -279,16 +396,18 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
               </div>
               <div className="grid grid-cols-3 gap-2 text-slate-700">
                 <div>
-                  <span className="text-slate-500 block text-[11px]">สาขา</span>
-                  <strong className="text-slate-900">{preview.meta.branch}</strong>
+                  <span className="text-slate-500 block text-[11px]">สาขาที่ตรวจพบ</span>
+                  <strong className="text-slate-900 font-bold text-sm text-sky-700">
+                    {preview.meta.branch || 'ไม่ระบุ'}
+                  </strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">จำนวนรถ</span>
-                  <strong className="text-slate-900">{preview.summary.totalVehicles} คัน</strong>
+                  <strong className="text-slate-900 font-bold text-sm">{preview.summary.totalVehicles} คัน</strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">ยอดเงินรางวัลรวม</span>
-                  <strong className="text-emerald-700">฿{preview.summary.totalRewards.toLocaleString()}</strong>
+                  <strong className="text-emerald-700 font-bold text-sm">฿{preview.summary.totalRewards.toLocaleString()}</strong>
                 </div>
               </div>
             </div>

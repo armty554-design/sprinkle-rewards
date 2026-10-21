@@ -53,6 +53,11 @@ export default function VehicleTable({ vehicles, onSelect, onPrint }) {
                     <span className="font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
                       {general.carCode}
                     </span>
+                    {general.branch && (
+                      <span className="block text-[10px] text-sky-700 font-semibold">
+                        {general.branch}
+                      </span>
+                    )}
                   </td>
 
                   {/* Driver Name & ID */}

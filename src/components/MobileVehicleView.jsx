@@ -13,7 +13,8 @@ import {
   ChevronRight,
   LogOut,
   Calendar,
-  ShieldCheck
+  ShieldCheck,
+  Database
 } from 'lucide-react';
 
 export default function MobileVehicleView({ 
@@ -28,7 +29,8 @@ export default function MobileVehicleView({
   onSelectMonth,
   onPrint,
   onOpenApprovalModal,
-  pendingUsersCount = 0
+  pendingUsersCount = 0,
+  onOpenDataManager
 }) {
   const [mobileTab, setMobileTab] = useState('summary'); // 'summary', 'defects', 'all_items'
   const [expandedGroup, setExpandedGroup] = useState('g1');
@@ -122,18 +124,30 @@ export default function MobileVehicleView({
             </select>
           </div>
 
-          <button
-            onClick={onOpenApprovalModal}
-            className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 font-bold text-xs flex items-center gap-1 shrink-0 shadow-2xs cursor-pointer active:scale-95 transition-transform"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-            <span>อนุมัติ</span>
-            {pendingUsersCount > 0 && (
-              <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
-                {pendingUsersCount}
-              </span>
+          <div className="flex items-center space-x-1.5 shrink-0">
+            {onOpenDataManager && (
+              <button
+                onClick={onOpenDataManager}
+                className="px-2 py-1 rounded-lg bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-transform"
+              >
+                <Database className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden xs:inline">จัดการข้อมูล</span>
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={onOpenApprovalModal}
+              className="px-2.5 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-transform"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+              <span>อนุมัติ</span>
+              {pendingUsersCount > 0 && (
+                <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                  {pendingUsersCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       )}
 

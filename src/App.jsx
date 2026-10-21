@@ -12,17 +12,19 @@ import VehicleDetailModal from './components/VehicleDetailModal';
 import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
 import UserApprovalModal from './components/UserApprovalModal';
+import AdminDataManagerModal from './components/AdminDataManagerModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import { parseCSVData } from './utils/parser';
 import { 
   getAllMonths, 
   getMonthData, 
   saveNewMonth, 
+  mergeBranchIntoMonth,
   getSelectedMonthKey, 
   setSelectedMonthKey 
 } from './utils/monthStorage';
 import { getPendingUsersCount } from './utils/userManagement';
-import { AlertCircle, CheckCircle2, LogOut, User, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LogOut, User, ShieldCheck, Database, Building2 } from 'lucide-react';
 
 const STORAGE_AUTH_USER = 'sprinkle_auth_user';
 
@@ -91,6 +93,7 @@ export default function App() {
 
   // Filters for All Vehicles Overview
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('all');
   const [selectedZone, setSelectedZone] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -101,6 +104,7 @@ export default function App() {
   const [printVehicle, setPrintVehicle] = useState(null);
   const [isUploadNewMonthOpen, setIsUploadNewMonthOpen] = useState(false);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [isDataManagerOpen, setIsDataManagerOpen] = useState(false);
   const [pendingUsersCount, setPendingUsersCount] = useState(() => getPendingUsersCount());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -112,6 +116,15 @@ export default function App() {
     };
     window.addEventListener('sprinkle_users_updated', handleUsersUpdate);
     return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
+  }, []);
+
+  // Sync months on custom months update
+  useEffect(() => {
+    const handleMonthsUpdate = () => {
+      setAllMonthsList(getAllMonths());
+    };
+    window.addEventListener('sprinkle_months_updated', handleMonthsUpdate);
+    return () => window.removeEventListener('sprinkle_months_updated', handleMonthsUpdate);
   }, []);
 
   // Login handler
@@ -135,9 +148,15 @@ export default function App() {
     showNotification(`สลับข้อมูลเป็นเดือน: ${getMonthData(key)?.label || key}`, 'info');
   };
 
-  // New month added handler
-  const handleMonthAdded = (key, label, csvText, note) => {
-    const saved = saveNewMonth(key, label, csvText, note);
+  // New month added handler supporting merge and replace modes
+  const handleMonthAdded = (key, label, csvText, note, importMode = 'merge') => {
+    let saved = null;
+    if (importMode === 'merge') {
+      saved = mergeBranchIntoMonth(key, csvText, label, note);
+    } else {
+      saved = saveNewMonth(key, label, csvText, note);
+    }
+
     if (saved) {
       const updatedList = getAllMonths();
       setAllMonthsList(updatedList);
@@ -178,6 +197,10 @@ export default function App() {
     }, 4000);
   };
 
+  const branches = useMemo(() => {
+    return Array.from(new Set(data.vehicles.map(v => v.general.branch).filter(Boolean))).sort();
+  }, [data]);
+
   const zones = useMemo(() => {
     return Array.from(new Set(data.vehicles.map(v => v.general.zone).filter(Boolean))).sort();
   }, [data]);
@@ -185,6 +208,27 @@ export default function App() {
   const types = useMemo(() => {
     return Array.from(new Set(data.vehicles.map(v => v.general.carType).filter(Boolean))).sort();
   }, [data]);
+
+  const activeSummary = useMemo(() => {
+    if (selectedBranch === 'all') return data.summary;
+    const branchVehicles = data.vehicles.filter(v => v.general.branch === selectedBranch);
+    const totalVehicles = branchVehicles.length;
+    const totalRewards = branchVehicles.reduce((sum, v) => sum + v.totals.totalReward, 0);
+    const avgReward = totalVehicles > 0 ? Math.round(totalRewards / totalVehicles) : 0;
+    const qualifiedCount = branchVehicles.filter(v => v.general.qualified).length;
+    const withRewardCount = branchVehicles.filter(v => v.totals.totalReward > 0).length;
+    const vehiclesWithDefects = branchVehicles.filter(v => v.defects.length > 0).length;
+    const totalPendingDeductions = branchVehicles.reduce((sum, v) => sum + v.totals.pendingDeduction, 0);
+    return {
+      totalVehicles,
+      totalRewards,
+      avgReward,
+      qualifiedCount,
+      withRewardCount,
+      vehiclesWithDefects,
+      totalPendingDeductions
+    };
+  }, [data, selectedBranch]);
 
   const filteredVehicles = useMemo(() => {
     return data.vehicles.filter(v => {
@@ -195,6 +239,7 @@ export default function App() {
         const empId = v.general.empId.toLowerCase();
         if (!car.includes(q) && !name.includes(q) && !empId.includes(q)) return false;
       }
+      if (selectedBranch !== 'all' && v.general.branch !== selectedBranch) return false;
       if (selectedZone !== 'all' && v.general.zone !== selectedZone) return false;
       if (selectedType !== 'all' && v.general.carType !== selectedType) return false;
       if (selectedStatus === 'has_reward' && v.totals.totalReward <= 0) return false;
@@ -211,10 +256,11 @@ export default function App() {
       if (sortBy === 'defects_desc') return b.defects.length - a.defects.length;
       return 0;
     });
-  }, [data, searchQuery, selectedZone, selectedType, selectedStatus, sortBy]);
+  }, [data, searchQuery, selectedBranch, selectedZone, selectedType, selectedStatus, sortBy]);
 
   const handleResetFilters = () => {
     setSearchQuery('');
+    setSelectedBranch('all');
     setSelectedZone('all');
     setSelectedType('all');
     setSelectedStatus('all');
@@ -249,6 +295,7 @@ export default function App() {
           onPrint={(v) => setPrintVehicle(v)}
           onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
           pendingUsersCount={pendingUsersCount}
+          onOpenDataManager={() => setIsDataManagerOpen(true)}
         />
 
         {printVehicle && (
@@ -258,12 +305,39 @@ export default function App() {
           />
         )}
 
+        {isUploadNewMonthOpen && (
+          <UploadNewMonthModal
+            onClose={() => setIsUploadNewMonthOpen(false)}
+            onMonthAdded={handleMonthAdded}
+            currentUser={currentUser}
+          />
+        )}
+
         {isApprovalModalOpen && (
           <UserApprovalModal
             isOpen={isApprovalModalOpen}
             onClose={() => setIsApprovalModalOpen(false)}
             currentAdminName={currentUser?.name}
             onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
+          />
+        )}
+
+        {isDataManagerOpen && (
+          <AdminDataManagerModal
+            isOpen={isDataManagerOpen}
+            onClose={() => setIsDataManagerOpen(false)}
+            currentMonthKey={selectedMonthKey}
+            onSelectMonth={handleSelectMonth}
+            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+            currentUser={currentUser}
+            currentMonthData={data}
+            onDataChanged={(newKey) => {
+              setAllMonthsList(getAllMonths());
+              if (newKey) {
+                setSelectedMonthState(newKey);
+                setSelectedMonthKey(newKey);
+              }
+            }}
           />
         )}
       </>
@@ -291,6 +365,9 @@ export default function App() {
           currentUser={currentUser}
           onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
           pendingUsersCount={pendingUsersCount}
+          onOpenDataManager={() => setIsDataManagerOpen(true)}
+          selectedBranch={selectedBranch}
+          branches={branches}
         />
 
         {/* Current User Session Bar on Desktop */}
@@ -300,20 +377,30 @@ export default function App() {
               <User className="w-3.5 h-3.5 text-sky-400" />
               <span>เข้าสู่ระบบโดย: <strong>{currentUser.name}</strong> ({currentUser.role === 'driver' ? `เบอร์รถ ${currentUser.carCode}` : currentUser.title || 'หัวหน้างาน'})</span>
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {(currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'office') && (
-                <button
-                  onClick={() => setIsApprovalModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold transition-colors text-xs cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                  <span>จัดการอนุมัติพนักงาน</span>
-                  {pendingUsersCount > 0 && (
-                    <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
-                      {pendingUsersCount}
-                    </span>
-                  )}
-                </button>
+                <>
+                  <button
+                    onClick={() => setIsDataManagerOpen(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold transition-colors text-xs cursor-pointer"
+                  >
+                    <Database className="w-3.5 h-3.5 text-sky-400" />
+                    <span>จัดการข้อมูลและสาขา</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsApprovalModalOpen(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition-colors text-xs cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                    <span>จัดการอนุมัติพนักงาน</span>
+                    {pendingUsersCount > 0 && (
+                      <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                        {pendingUsersCount}
+                      </span>
+                    )}
+                  </button>
+                </>
               )}
               <button
                 onClick={handleLogout}
@@ -352,7 +439,7 @@ export default function App() {
         
         {/* KPI Stat Cards for Current Month */}
         <DashboardStats 
-          summary={data.summary} 
+          summary={activeSummary} 
           onFilterChange={(key, val) => {
             if (key === 'status') setSelectedStatus(val);
           }}
@@ -376,6 +463,9 @@ export default function App() {
             <FilterBar
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
+              selectedBranch={selectedBranch}
+              setSelectedBranch={setSelectedBranch}
+              branches={branches}
               selectedZone={selectedZone}
               setSelectedZone={setSelectedZone}
               selectedType={selectedType}
@@ -489,6 +579,25 @@ export default function App() {
           onClose={() => setIsApprovalModalOpen(false)}
           currentAdminName={currentUser?.name}
           onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
+        />
+      )}
+
+      {isDataManagerOpen && (
+        <AdminDataManagerModal
+          isOpen={isDataManagerOpen}
+          onClose={() => setIsDataManagerOpen(false)}
+          currentMonthKey={selectedMonthKey}
+          onSelectMonth={handleSelectMonth}
+          onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+          currentUser={currentUser}
+          currentMonthData={data}
+          onDataChanged={(newKey) => {
+            setAllMonthsList(getAllMonths());
+            if (newKey) {
+              setSelectedMonthState(newKey);
+              setSelectedMonthKey(newKey);
+            }
+          }}
         />
       )}
 
