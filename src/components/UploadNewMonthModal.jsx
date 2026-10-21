@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck, Layers, GitMerge } from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck, Layers, GitMerge, Sparkles, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { parseCSVData } from '../utils/parser';
-import { formatThaiMonthLabel, normalizeMonthKey } from '../utils/monthStorage';
+import { formatThaiMonthLabel, normalizeMonthKey, mergeBranchIntoMonth, saveNewMonth } from '../utils/monthStorage';
 
 export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser }) {
   const [monthKey, setMonthKey] = useState('');
@@ -132,6 +132,46 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
     }
   };
 
+  const handleBatchImportAllSheets = () => {
+    if (!workbook || sheetNames.length === 0) return;
+    if (!window.confirm(`ต้องการนำเข้าข้อมูลประวัติย้อนหลังทุกเดือน (${sheetNames.length} เดือน) จากไฟล์นี้เข้าสู่ระบบพร้อมกันใช่หรือไม่?`)) return;
+
+    setIsLoading(true);
+    setError('');
+    try {
+      let count = 0;
+      const uploaderInfo = currentUser?.name 
+        ? ` (อัพโหลดโดย: ${currentUser.name}${currentUser.empId ? ` [${currentUser.empId}]` : ''})` 
+        : '';
+
+      sheetNames.forEach(sheetName => {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) return;
+        const text = XLSX.utils.sheet_to_csv(sheet);
+        if (!text || text.trim().length < 50) return;
+
+        const normKey = normalizeMonthKey(sheetName);
+        const cleanLabel = formatThaiMonthLabel(sheetName);
+        const noteStr = `นำเข้าประวัติย้อนหลังทั้งหมดจากไฟล์ ${fileName} (แผ่นงาน ${sheetName})${uploaderInfo}`;
+        
+        if (importMode === 'merge') {
+          mergeBranchIntoMonth(normKey, text, cleanLabel, noteStr);
+        } else {
+          saveNewMonth(normKey, cleanLabel, text, noteStr);
+        }
+        count++;
+      });
+
+      window.dispatchEvent(new Event('sprinkle_months_updated'));
+      alert(`นำเข้าข้อมูลประวัติย้อนหลังสำเร็จทั้งหมด ${count} เดือนเรียบร้อยแล้ว! ข้อมูลจะปรากฏในเมนูเลือกเดือนทันที`);
+      onClose();
+    } catch (err) {
+      setError('เกิดข้อผิดพลาดในการนำเข้าหลายเดือนพร้อมกัน: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!csvContent) {
@@ -161,8 +201,8 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">นำเข้าข้อมูลรางวัลประจำเดือนใหม่</h3>
-              <p className="text-xs text-slate-400">อัปโหลดไฟล์ Excel / CSV ประจำเดือนที่ได้รับจากสำนักงานใหญ่</p>
+              <h3 className="font-bold text-base text-white">นำเข้าข้อมูลรางวัล (เดือนใหม่ / ประวัติย้อนหลัง)</h3>
+              <p className="text-xs text-slate-400">อัปโหลดไฟล์ Excel / CSV ประจำเดือน หรือนำเข้าทุกเดือนเก่าในไฟล์พร้อมกัน</p>
             </div>
           </div>
           <button 
@@ -299,27 +339,55 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
             </div>
           )}
 
-          {/* Multi-Sheet Selector for Excel files */}
+          {/* Multi-Sheet Selector for Excel files (e.g. 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx containing 28 past months) */}
           {sheetNames.length > 1 && (
-            <div className="p-3.5 bg-indigo-50/80 border border-indigo-100 rounded-xl space-y-2 text-xs">
+            <div className="p-4 bg-indigo-50/90 border border-indigo-200 rounded-2xl space-y-3 text-xs shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-indigo-900 flex items-center gap-1.5">
+                <span className="font-bold text-indigo-950 flex items-center gap-1.5">
                   <Layers className="w-4 h-4 text-indigo-600" />
-                  <span>ตรวจพบแผ่นงานในไฟล์ทั้งหมด {sheetNames.length} แผ่นงาน:</span>
+                  <span>ตรวจพบข้อมูลประวัติย้อนหลังในไฟล์ {sheetNames.length} เดือน / แผ่นงาน:</span>
                 </span>
-                <span className="text-[11px] text-indigo-600">เลือกแผ่นงานที่ต้องการนำเข้า</span>
+                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-full">
+                  ย้อนหลัง {sheetNames.length} เดือน
+                </span>
               </div>
-              <select
-                value={selectedSheetName}
-                onChange={(e) => handleSheetSwitch(e.target.value)}
-                className="w-full py-2 px-3 text-xs rounded-lg border border-indigo-200 bg-white font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500"
-              >
-                {sheetNames.map((name) => (
-                  <option key={name} value={name}>
-                    แผ่นงาน: {name}
-                  </option>
-                ))}
-              </select>
+
+              <div>
+                <label className="block text-[11px] font-bold text-indigo-900 mb-1">
+                  เลือกเดือน/แผ่นงานที่ต้องการเปิดดูหรือนำเข้าทีละเดือน:
+                </label>
+                <select
+                  value={selectedSheetName}
+                  onChange={(e) => handleSheetSwitch(e.target.value)}
+                  className="w-full py-2.5 px-3 text-xs rounded-xl border border-indigo-200 bg-white font-bold text-slate-800 focus:outline-hidden focus:border-indigo-500 shadow-2xs"
+                >
+                  {sheetNames.map((name) => {
+                    const thaiLabel = formatThaiMonthLabel(name);
+                    return (
+                      <option key={name} value={name}>
+                        แผ่นงาน: {name} {thaiLabel && thaiLabel !== name ? `(${thaiLabel})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Batch 1-Click Import Button for All Sheets */}
+              <div className="pt-1 border-t border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                <div className="text-[11px] text-indigo-800 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>ต้องการนำเข้าประวัติย้อนหลังทุกเดือนเข้าสู่ระบบพร้อมกัน?</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={handleBatchImportAllSheets}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>⚡ นำเข้าทุกเดือนย้อนหลังพร้อมกัน ({sheetNames.length} เดือน)</span>
+                </button>
+              </div>
             </div>
           )}
 

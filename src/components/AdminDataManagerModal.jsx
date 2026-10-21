@@ -213,7 +213,7 @@ export default function AdminDataManagerModal({
               className="px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>+ นำเข้าไฟล์เดือนใหม่</span>
+              <span>+ นำเข้าเดือนเก่าๆ หรือเดือนใหม่</span>
             </button>
           </div>
         </div>
@@ -229,7 +229,7 @@ export default function AdminDataManagerModal({
             }`}
           >
             <Calendar className="w-4 h-4" />
-            <span>รายการเดือนและข้อมูล ({monthsList.length})</span>
+            <span>รายการเดือนในระบบ ({monthsList.length})</span>
           </button>
 
           <button
@@ -241,7 +241,7 @@ export default function AdminDataManagerModal({
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>นำเข้าไฟล์ตัวอย่าง (10_ผลคะแนนฯ - บางพลี)</span>
+            <span>นำเข้าตัวอย่างประวัติย้อนหลัง (บางพลี)</span>
           </button>
 
           <button
