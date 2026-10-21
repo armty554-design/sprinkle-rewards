@@ -27,6 +27,7 @@ dist-ssr
 sheet_htmlview.html
 sample_driver.json
 columns_summary.json
+*.xlsx
 
 # Vercel
 .vercel

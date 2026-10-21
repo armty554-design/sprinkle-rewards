@@ -1,25 +1,45 @@
 // Office staff & Management registration & Admin approval management utility
+import { OFFICE_STAFF_LIST, findOfficeStaffByEmpId, OFFICE_BRANCH_LIST } from '../data/officeStaffData';
 
 const STORAGE_USERS_KEY = 'sprinkle_registered_users';
 const STORAGE_STRICT_MODE_KEY = 'sprinkle_require_approval_strict';
 
+// Pre-approved office staff list from official IMPORTRANGE roster
+const DEFAULT_OFFICE_USERS = OFFICE_STAFF_LIST.map(staff => ({
+  id: 'office_' + staff.empId,
+  empId: staff.empId,
+  fullName: staff.fullName,
+  position: staff.position,
+  branch: staff.branch,
+  zone: staff.zone,
+  role: 'office',
+  canUpload: true,
+  status: 'approved',
+  registeredAt: 'นำเข้าจากระบบ',
+  approvedAt: 'อนุมัติอัตโนมัติ (รายชื่อออฟฟิศ)',
+  approvedBy: 'ระบบ'
+}));
+
 export function getRegisteredUsers() {
   try {
     const raw = localStorage.getItem(STORAGE_USERS_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    if (!Array.isArray(list)) return [];
-    // Ensure absolutely no mock/demo items exist
-    const cleaned = list.filter(u => u && !u.id?.startsWith('reg_demo') && u.empId !== 'OF001');
-    if (cleaned.length !== list.length) {
-      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(cleaned));
-    }
-    return cleaned;
+    const customList = raw ? JSON.parse(raw) : [];
+    const validCustom = Array.isArray(customList) 
+      ? customList.filter(u => u && !u.id?.startsWith('reg_demo') && u.empId !== 'OF001')
+      : [];
+    
+    // Combine custom users (who may override or add new entries) with the 101 office staff list
+    const customEmpIds = new Set(validCustom.map(u => u.empId.toLowerCase()));
+    const remainingDefaults = DEFAULT_OFFICE_USERS.filter(u => !customEmpIds.has(u.empId.toLowerCase()));
+    
+    return [...validCustom, ...remainingDefaults];
   } catch (err) {
     console.error('Failed to get registered users:', err);
-    return [];
+    return DEFAULT_OFFICE_USERS;
   }
 }
+
+export { findOfficeStaffByEmpId, OFFICE_BRANCH_LIST };
 
 export function saveRegisteredUsers(users) {
   try {

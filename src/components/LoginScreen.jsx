@@ -14,7 +14,9 @@ import {
 import { 
   registerOfficeUser, 
   findRegisteredUser, 
-  isStrictModeEnabled 
+  isStrictModeEnabled,
+  findOfficeStaffByEmpId,
+  OFFICE_BRANCH_LIST
 } from '../utils/userManagement';
 
 export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel }) {
@@ -26,8 +28,22 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
   const [regEmpId, setRegEmpId] = useState('');
   const [regFullName, setRegFullName] = useState('');
   const [regPosition, setRegPosition] = useState('');
-  const [regBranch, setRegBranch] = useState('สาขา 1 (สนญ.)');
+  const [regBranch, setRegBranch] = useState('บางพลี');
   const [registeredUserObj, setRegisteredUserObj] = useState(null);
+
+  // Auto-fill from official office roster when employee ID is typed
+  const handleEmpIdChange = (val) => {
+    setRegEmpId(val);
+    const trimmed = val.trim();
+    if (trimmed.length >= 3) {
+      const match = findOfficeStaffByEmpId(trimmed);
+      if (match) {
+        setRegFullName(match.fullName);
+        setRegPosition(match.position);
+        if (match.branch) setRegBranch(match.branch);
+      }
+    }
+  };
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -278,9 +294,9 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                 </label>
                 <input
                   type="text"
-                  placeholder="ระบุรหัสพนักงาน"
+                  placeholder="ระบุรหัสพนักงาน (ระบบจะดึงข้อมูลให้อัตโนมัติ)"
                   value={regEmpId}
-                  onChange={(e) => setRegEmpId(e.target.value)}
+                  onChange={(e) => handleEmpIdChange(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                   required
                   autoFocus
@@ -302,7 +318,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                 />
               </div>
 
-              {/* 4. ตำแหน่ง */}
+              {/* 3. ตำแหน่ง */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   ตำแหน่ง <span className="text-rose-500">*</span>
@@ -320,7 +336,7 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                 </div>
               </div>
 
-              {/* 5. สาขา */}
+              {/* 4. สาขา */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   สาขา <span className="text-rose-500">*</span>
@@ -333,11 +349,11 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
                     className="w-full pl-8 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 bg-white"
                     required
                   >
-                    <option value="สาขา 1 (สนญ.)">สาขา 1 (สนญ.)</option>
-                    <option value="สาขา 2 (บางพลี)">สาขา 2 (บางพลี)</option>
-                    <option value="สาขา 3 (พุทธมณฑล)">สาขา 3 (พุทธมณฑล)</option>
-                    <option value="สาขา 4 (รังสิต)">สาขา 4 (รังสิต)</option>
-                    <option value="สำนักงานใหญ่">สำนักงานใหญ่</option>
+                    {OFFICE_BRANCH_LIST.map((branch) => (
+                      <option key={branch} value={branch}>
+                        {branch}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

@@ -24,7 +24,9 @@ import {
   deleteUser, 
   isStrictModeEnabled, 
   setStrictModeEnabled,
-  addOfficeUserDirectly
+  addOfficeUserDirectly,
+  OFFICE_BRANCH_LIST,
+  findOfficeStaffByEmpId
 } from '../utils/userManagement';
 
 export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 'ผู้ดูแลระบบ', onUsersChanged }) {
@@ -40,8 +42,21 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
   const [isAddOfficeModalOpen, setIsAddOfficeModalOpen] = useState(false);
   const [newEmpId, setNewEmpId] = useState('');
   const [newFullName, setNewFullName] = useState('');
-  const [newPosition, setNewPosition] = useState('เจ้าหน้าที่ธุรการโลจิสติกส์');
-  const [newBranch, setNewBranch] = useState('สาขา 1 (สนญ.)');
+  const [newPosition, setNewPosition] = useState('เจ้าหน้าที่ธุรการ');
+  const [newBranch, setNewBranch] = useState('บางพลี');
+
+  const handleDirectEmpIdChange = (val) => {
+    setNewEmpId(val);
+    const trimmed = val.trim();
+    if (trimmed.length >= 3) {
+      const match = findOfficeStaffByEmpId(trimmed);
+      if (match) {
+        setNewFullName(match.fullName);
+        setNewPosition(match.position);
+        if (match.branch) setNewBranch(match.branch);
+      }
+    }
+  };
 
   const refreshUsers = () => {
     const list = getRegisteredUsers();
@@ -533,9 +548,9 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                 </label>
                 <input
                   type="text"
-                  placeholder="ระบุรหัสพนักงาน เช่น 10045"
+                  placeholder="ระบุรหัสพนักงาน (มีระบบค้นหาอัตโนมัติ)"
                   value={newEmpId}
-                  onChange={(e) => setNewEmpId(e.target.value)}
+                  onChange={(e) => handleDirectEmpIdChange(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                   required
                   autoFocus
@@ -583,11 +598,11 @@ export default function UserApprovalModal({ isOpen, onClose, currentAdminName = 
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 bg-white"
                   required
                 >
-                  <option value="สาขา 1 (สนญ.)">สาขา 1 (สนญ.)</option>
-                  <option value="สาขา 2 (บางพลี)">สาขา 2 (บางพลี)</option>
-                  <option value="สาขา 3 (พุทธมณฑล)">สาขา 3 (พุทธมณฑล)</option>
-                  <option value="สาขา 4 (รังสิต)">สาขา 4 (รังสิต)</option>
-                  <option value="สำนักงานใหญ่">สำนักงานใหญ่</option>
+                  {OFFICE_BRANCH_LIST.map((branch) => (
+                    <option key={branch} value={branch}>
+                      {branch}
+                    </option>
+                  ))}
                 </select>
               </div>
 
