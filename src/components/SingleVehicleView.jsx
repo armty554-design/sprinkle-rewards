@@ -116,11 +116,19 @@ export default function SingleVehicleView({
   };
 
   const allGroups = [
-    { key: 'g1', group: groups.group1, title: '1. กลุ่มงานจัดส่ง (เต็ม 120 คะแนน)' },
-    { key: 'g2', group: groups.group2, title: '2. กลุ่มงานบริการ (เต็ม 75 คะแนน)' },
-    { key: 'g3', group: groups.group3, title: '3. กลุ่มงานเอกสารและผลิตภัณฑ์ (เต็ม 60 คะแนน)' },
-    { key: 'g4', group: groups.group4, title: '4. กลุ่มงานภาพลักษณ์แบรนด์ (เต็ม 60 คะแนน)' },
+    { key: 'g1', group: groups.group1, title: `1. ${groups.group1?.name || 'กลุ่มงานจัดส่ง'}` },
+    { key: 'g2', group: groups.group2, title: `2. ${groups.group2?.name || 'กลุ่มงานบริการ'}` },
+    { key: 'g3', group: groups.group3, title: `3. ${groups.group3?.name || 'กลุ่มงานเอกสารและผลิตภัณฑ์'}` },
+    { key: 'g4', group: groups.group4, title: `4. ${groups.group4?.name || 'กลุ่มงานภาพลักษณ์แบรนด์'}` },
   ];
+
+  if (groups.group5 && groups.group5.items && groups.group5.items.length > 0) {
+    allGroups.push({
+      key: 'g5',
+      group: groups.group5,
+      title: `5. ${groups.group5.name || 'กลุ่ม 5 และเงินพิเศษ'}`
+    });
+  }
 
   const displayedGroups = activeGroupFilter === 'all' 
     ? allGroups 
@@ -474,7 +482,7 @@ export default function SingleVehicleView({
           <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-slate-800 text-sm">
-                แจกแจงเกณฑ์ประเมินครบทุกข้อ (1.1 ถึง 4.7)
+                แจกแจงเกณฑ์ประเมินรายข้อประจำเดือนนี้
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 ผลงานจริง, คะแนนที่ได้รับ และยอดเงินรางวัลรายข้อ

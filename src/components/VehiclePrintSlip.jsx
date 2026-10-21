@@ -193,7 +193,7 @@ export default function VehiclePrintSlip({ vehicle, onClose }) {
                   <td className="p-2 text-right">{renderRewardCell(groups.group3.reward)}</td>
                 </tr>
                 <tr>
-                  <td className="p-2 border-r border-slate-200 font-medium">4. กลุ่มงานภาพลักษณ์แบรนด์</td>
+                  <td className="p-2 border-r border-slate-200 font-medium">4. {groups.group4?.name || 'กลุ่มงานภาพลักษณ์แบรนด์'}</td>
                   <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group4.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group4.score}</td>
                   <td className={`p-2 text-right border-r border-slate-200 font-bold ${groups.group4.percent >= 85 ? 'text-emerald-700' : 'text-rose-700'}`}>{groups.group4.percent}%</td>
                   <td className={`p-2 text-center border-r border-slate-200 font-semibold ${groups.group4.level.includes('<') ? 'text-rose-700' : 'text-emerald-700'}`}>{groups.group4.level}</td>

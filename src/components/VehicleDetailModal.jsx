@@ -256,7 +256,7 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
-            <span>กลุ่ม 4 ภาพลักษณ์</span>
+            <span>{groups.group4?.name ? groups.group4.name.replace('กลุ่มงาน', 'กลุ่ม 4 ') : 'กลุ่ม 4 ภาพลักษณ์'}</span>
             <span className="text-xs opacity-70">({groups.group4.score} คะแนน)</span>
           </button>
 
