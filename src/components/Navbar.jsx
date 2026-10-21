@@ -66,9 +66,9 @@ export default function Navbar({
                 onChange={(e) => onSelectMonth(e.target.value)}
                 className="pl-8 pr-8 py-1.5 text-xs sm:text-sm font-semibold bg-slate-50 hover:bg-slate-100 text-slate-800 rounded-xl border border-slate-200/80 transition-colors cursor-pointer appearance-none focus:outline-hidden focus:ring-2 focus:ring-sky-500/20"
               >
-                {allMonths.map((m) => (
+                {allMonths.map((m, idx) => (
                   <option key={m.key} value={m.key}>
-                    {m.label} {m.key === '2569-09' ? '(ล่าสุด)' : ''}
+                    {m.label} {idx === 0 ? '(ล่าสุด)' : ''}
                   </option>
                 ))}
               </select>

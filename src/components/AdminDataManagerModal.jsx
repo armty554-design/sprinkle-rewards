@@ -27,7 +27,9 @@ import {
   mergeBranchIntoMonth, 
   deleteCustomMonth, 
   setSelectedMonthKey,
-  getMonthQuickStats 
+  getMonthQuickStats,
+  formatThaiMonthLabel,
+  normalizeMonthKey
 } from '../utils/monthStorage';
 import { BANGBLEE_SAMPLE_SHEETS } from '../data/bangpleeSampleData';
 
@@ -79,13 +81,13 @@ export default function AdminDataManagerModal({
       const res = mergeBranchIntoMonth(
         key,
         csv,
-        `ข้อมูลรางวัลเดือน ${key}`,
-        `นำเข้าจากไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (แผ่นงาน ${sheetKey} สาขาบางพลี)`
+        formatThaiMonthLabel(key),
+        `นำเข้าจากไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (สาขาบางพลี)`
       );
 
       if (res) {
-        showNotice(`รวมข้อมูลสาขาบางพลีจากไฟล์ตัวอย่างเข้าสู่เดือน ${key} เรียบร้อยแล้ว!`, 'success');
-        if (onDataChanged) onDataChanged(key);
+        showNotice(`รวมข้อมูลสาขาบางพลีเข้าสู่เดือน ${formatThaiMonthLabel(key)} เรียบร้อยแล้ว!`, 'success');
+        if (onDataChanged) onDataChanged(normalizeMonthKey(key));
       } else {
         showNotice('ไม่สามารถรวมข้อมูลได้', 'error');
       }
@@ -104,10 +106,11 @@ export default function AdminDataManagerModal({
       let count = 0;
       Object.keys(BANGBLEE_SAMPLE_SHEETS).forEach(sheetKey => {
         const csv = BANGBLEE_SAMPLE_SHEETS[sheetKey];
+        const normKey = normalizeMonthKey(sheetKey);
         mergeBranchIntoMonth(
-          sheetKey,
+          normKey,
           csv,
-          `ข้อมูลรางวัลเดือน ${sheetKey}`,
+          formatThaiMonthLabel(normKey),
           `นำเข้าจากไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (สาขาบางพลี)`
         );
         count++;
@@ -412,10 +415,10 @@ export default function AdminDataManagerModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
-                    { key: '2569-09', title: 'กันยายน 2569 (2569-09)', cars: 25, branch: 'บางพลี' },
-                    { key: '2569-08', title: 'สิงหาคม 2569 (2569-08)', cars: 25, branch: 'บางพลี' },
-                    { key: '2569-07', title: 'กรกฎาคม 2569 (2569-07)', cars: 25, branch: 'บางพลี' },
-                    { key: '10-2567', title: 'ตุลาคม 2567 (10-2567)', cars: 24, branch: 'บางพลี' }
+                    { key: '2569-09', sheetKey: '2569-09', title: 'กันยายน 2569 (2569-09)', cars: 25, branch: 'บางพลี' },
+                    { key: '2569-08', sheetKey: '2569-08', title: 'สิงหาคม 2569 (2569-08)', cars: 25, branch: 'บางพลี' },
+                    { key: '2569-07', sheetKey: '2569-07', title: 'กรกฎาคม 2569 (2569-07)', cars: 25, branch: 'บางพลี' },
+                    { key: '2567-10', sheetKey: '10-2567', title: 'ตุลาคม 2567 (2567-10)', cars: 24, branch: 'บางพลี' }
                   ].map(item => (
                     <div 
                       key={item.key}
@@ -431,7 +434,7 @@ export default function AdminDataManagerModal({
                       </div>
 
                       <button
-                        onClick={() => handleImportSampleSheet(item.key, item.key)}
+                        onClick={() => handleImportSampleSheet(item.sheetKey, item.key)}
                         disabled={isProcessing}
                         className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                       >

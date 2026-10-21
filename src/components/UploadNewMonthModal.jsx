@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Upload, FileSpreadsheet, Check, AlertCircle, Calendar, Link2, RotateCw, Briefcase, ShieldCheck, Layers, GitMerge } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { parseCSVData } from '../utils/parser';
+import { formatThaiMonthLabel, normalizeMonthKey } from '../utils/monthStorage';
 
 export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser }) {
   const [monthKey, setMonthKey] = useState('');
@@ -93,34 +94,13 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       setCsvContent(text);
       setPreview(parsed);
       
-      // Auto deduce month from sheetName, data, or filename
+      // Auto deduce clean month key and Thai label
       const sourceStr = sheetName || parsed.meta.month || fName;
-      const match = sourceStr.match(/([0-9]{4})[-_]([0-9]{2})/) || sourceStr.match(/([0-9]{2})[-_]([0-9]{4})/);
-      
-      let deducedKey = '';
-      if (match) {
-        if (match[1].length === 4) {
-          deducedKey = `${match[1]}-${match[2]}`;
-        } else {
-          deducedKey = `${match[2]}-${match[1]}`;
-        }
-      }
+      const normKey = normalizeMonthKey(sourceStr);
+      const cleanLabel = formatThaiMonthLabel(sourceStr);
 
-      if (deducedKey) {
-        setMonthKey(deducedKey);
-        // Deduce Thai month label from key
-        const [y, m] = deducedKey.split('-');
-        const monthNames = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-        const mNum = parseInt(m, 10);
-        if (mNum >= 1 && mNum <= 12) {
-          setMonthLabel(`${monthNames[mNum]} ${y}`);
-        } else {
-          setMonthLabel(sheetName || parsed.meta.month || deducedKey);
-        }
-      } else {
-        if (!monthLabel && parsed.meta.month) setMonthLabel(parsed.meta.month);
-        if (!monthKey) setMonthKey(`month_${Date.now()}`);
-      }
+      setMonthKey(normKey || `month_${Date.now()}`);
+      setMonthLabel(cleanLabel || parsed.meta.month || normKey);
     } catch (err) {
       setError('ข้อมูลในไฟล์ไม่ตรงตามรูปแบบ: ' + err.message);
     } finally {
@@ -158,8 +138,8 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       setError('กรุณาเลือกไฟล์ข้อมูลเดือนใหม่');
       return;
     }
-    const finalKey = monthKey.trim() || `month_${Date.now()}`;
-    const finalLabel = monthLabel.trim() || preview?.meta?.month || finalKey;
+    const finalKey = normalizeMonthKey(monthKey.trim()) || `month_${Date.now()}`;
+    const finalLabel = formatThaiMonthLabel(monthLabel.trim() || preview?.meta?.month || finalKey);
 
     const uploaderInfo = currentUser?.name 
       ? ` (อัพโหลดโดย: ${currentUser.name}${currentUser.empId ? ` [${currentUser.empId}]` : ''})` 
