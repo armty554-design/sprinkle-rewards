@@ -303,7 +303,7 @@ export default function BranchSubmissionAuditView({
               </span>
               <span className="text-xs text-slate-400">|</span>
               <span className="text-xs font-medium text-slate-300">
-                ข้อมูล 19 สาขาปฏิบัติการ (อิงข้อมูลพนักงานออฟฟิศ ยกเว้นสำนักงาน)
+                ข้อมูล {operationalBranches.length} สาขาปฏิบัติการ (อิงข้อมูลพนักงานออฟฟิศ ยกเว้นสำนักงานและโฮมเพลส)
               </span>
             </div>
 
@@ -715,7 +715,7 @@ export default function BranchSubmissionAuditView({
                 <span>ตารางติดตามการบันทึกข้อมูลย้อนหลังทุกเดือน (Cross-Month Audit Grid)</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                ตรวจสอบความต่อเนื่องในการส่งข้อมูลของทั้ง 19 สาขา ย้อนหลังแต่ละงวด
+                ตรวจสอบความต่อเนื่องในการส่งข้อมูลของทั้ง {operationalBranches.length} สาขา ย้อนหลังแต่ละงวด
               </p>
             </div>
           </div>

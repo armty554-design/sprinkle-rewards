@@ -1139,20 +1139,19 @@ export const OFFICE_BRANCH_LIST = [
   'ประเวศ',
   'ดอนเมือง',
   'สำนักงาน',
-  'โฮมเพลส',
   'ยิ่งโอฬาร',
   'สาขา 1 (สนญ.)'
 ];
 
 /**
  * Get operational branches derived exclusively from office staff data,
- * excluding 'สำนักงาน' and 'สาขา 1 (สนญ.)'.
+ * excluding 'สำนักงาน', 'สาขา 1 (สนญ.)', and 'โฮมเพลส'.
  */
 export function getOperationalBranches() {
   const branches = Array.from(new Set(
     OFFICE_STAFF_LIST
       .map(s => (s.branch || '').trim())
-      .filter(b => b && !b.includes('สำนักงาน') && !b.includes('สนญ.'))
+      .filter(b => b && !b.includes('สำนักงาน') && !b.includes('สนญ.') && !b.includes('โฮมเพลส'))
   )).sort((a, b) => a.localeCompare(b, 'th'));
   return branches;
 }
