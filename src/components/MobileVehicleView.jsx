@@ -14,12 +14,15 @@ import {
   LogOut,
   Calendar,
   ShieldCheck,
-  Database
+  Database,
+  TrendingUp
 } from 'lucide-react';
+import ExecutiveComparisonView from './ExecutiveComparisonView';
 
 export default function MobileVehicleView({ 
   vehicle, 
   allVehicles, 
+  currentMonthData,
   onSelectVehicle, 
   currentUser, 
   onLogout,
@@ -30,7 +33,8 @@ export default function MobileVehicleView({
   onPrint,
   onOpenApprovalModal,
   pendingUsersCount = 0,
-  onOpenDataManager
+  onOpenDataManager,
+  onOpenUploadModal
 }) {
   const [mobileTab, setMobileTab] = useState('summary'); // 'summary', 'defects', 'all_items'
   const [expandedGroup, setExpandedGroup] = useState('g1');
@@ -414,6 +418,21 @@ export default function MobileVehicleView({
           </div>
         )}
 
+        {/* TAB 4: EXECUTIVE COMPARISON VIEW (FOR SUPERVISORS / MANAGERS) */}
+        {mobileTab === 'executive' && isSupervisor && currentMonthData && (
+          <div className="space-y-4">
+            <ExecutiveComparisonView
+              data={currentMonthData}
+              allMonthsList={allMonths}
+              selectedMonthKey={selectedMonthKey}
+              onSelectMonth={onSelectMonth}
+              currentUser={currentUser}
+              onOpenUploadModal={onOpenUploadModal}
+              onOpenDataManager={onOpenDataManager}
+            />
+          </div>
+        )}
+
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
@@ -454,6 +473,19 @@ export default function MobileVehicleView({
           <Layers className="w-5 h-5 mb-0.5" />
           <span className="text-[10px]">เกณฑ์ทุกข้อ</span>
         </button>
+
+        {/* Tab 4: ผู้บริหาร (เฉพาะหัวหน้างาน / แอดมิน / ออฟฟิศ) */}
+        {isSupervisor && (
+          <button
+            onClick={() => setMobileTab('executive')}
+            className={`flex flex-col items-center py-1 px-3 rounded-xl transition-colors ${
+              mobileTab === 'executive' ? 'text-slate-900 font-bold' : 'text-slate-400'
+            }`}
+          >
+            <TrendingUp className="w-5 h-5 mb-0.5 text-sky-500" />
+            <span className="text-[10px]">ผู้บริหาร</span>
+          </button>
+        )}
 
       </nav>
 

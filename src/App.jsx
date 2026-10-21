@@ -11,6 +11,7 @@ import UploadNewMonthModal from './components/UploadNewMonthModal';
 import VehicleDetailModal from './components/VehicleDetailModal';
 import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
+import ExecutiveComparisonView from './components/ExecutiveComparisonView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -285,6 +286,7 @@ export default function App() {
         <MobileVehicleView
           vehicle={currentSelectedVehicle}
           allVehicles={data.vehicles}
+          currentMonthData={data}
           onSelectVehicle={(v) => setSingleViewCarId(v.id)}
           currentUser={currentUser}
           onLogout={handleLogout}
@@ -296,6 +298,7 @@ export default function App() {
           onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
           pendingUsersCount={pendingUsersCount}
           onOpenDataManager={() => setIsDataManagerOpen(true)}
+          onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
         />
 
         {printVehicle && (
@@ -437,14 +440,16 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* KPI Stat Cards for Current Month */}
-        <DashboardStats 
-          summary={activeSummary} 
-          onFilterChange={(key, val) => {
-            if (key === 'status') setSelectedStatus(val);
-          }}
-          currentStatusFilter={selectedStatus}
-        />
+        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บผู้บริหารเพื่อความกระชับ) */}
+        {activeTab !== 'executive' && (
+          <DashboardStats 
+            summary={activeSummary} 
+            onFilterChange={(key, val) => {
+              if (key === 'status') setSelectedStatus(val);
+            }}
+            currentStatusFilter={selectedStatus}
+          />
+        )}
 
         {/* TAB 1: SINGLE VEHICLE DRILLDOWN (กางทุกข้อ) */}
         {activeTab === 'single' && (
@@ -536,6 +541,19 @@ export default function App() {
               setActiveTab('single');
               setSearchQuery(code);
             }}
+          />
+        )}
+
+        {/* TAB 4: EXECUTIVE COMPARISON VIEW */}
+        {activeTab === 'executive' && (
+          <ExecutiveComparisonView
+            data={data}
+            allMonthsList={allMonthsList}
+            selectedMonthKey={selectedMonthKey}
+            onSelectMonth={handleSelectMonth}
+            currentUser={currentUser}
+            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+            onOpenDataManager={() => setIsDataManagerOpen(true)}
           />
         )}
 

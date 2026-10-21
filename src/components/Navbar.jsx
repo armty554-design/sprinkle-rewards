@@ -11,7 +11,8 @@ import {
   ChevronDown,
   ShieldCheck,
   Database,
-  Building2
+  Building2,
+  TrendingUp
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -125,6 +126,20 @@ export default function Navbar({
               >
                 <BarChart2 className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">สถิติ</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('executive')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'executive'
+                    ? 'bg-slate-900 text-white font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="ศูนย์ข้อมูลเปรียบเทียบสำหรับผู้บริหาร (ข้ามสาขา / ข้ามเดือน)"
+              >
+                <TrendingUp className={`w-3.5 h-3.5 ${activeTab === 'executive' ? 'text-sky-400' : 'text-slate-500'}`} />
+                <span className="hidden lg:inline">เปรียบเทียบผู้บริหาร</span>
+                <span className="lg:hidden">ผู้บริหาร</span>
               </button>
             </div>
 
