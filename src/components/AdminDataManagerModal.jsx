@@ -32,6 +32,7 @@ import {
   normalizeMonthKey
 } from '../utils/monthStorage';
 import { BANGBLEE_SAMPLE_SHEETS } from '../data/bangpleeSampleData';
+import { ALL_18_BRANCHES_MONTH_2569_09 } from '../data/all18BranchesData';
 
 export default function AdminDataManagerModal({
   isOpen,
@@ -117,6 +118,29 @@ export default function AdminDataManagerModal({
       });
       showNotice(`นำเข้าข้อมูลสาขาบางพลีทั้งหมด ${count} เดือนเรียบร้อยแล้ว!`, 'success');
       if (onDataChanged) onDataChanged('2569-09');
+    } catch (err) {
+      showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle 1-click loading of all 18 operational delivery branches (382 vehicles)
+  const handleLoadAll18Branches = () => {
+    setIsProcessing(true);
+    try {
+      const res = mergeBranchIntoMonth(
+        '2569-09',
+        ALL_18_BRANCHES_MONTH_2569_09,
+        'กันยายน 2569',
+        'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน, รางวัลรวม 850,070 บาท)'
+      );
+      if (res) {
+        showNotice('โหลดข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน) เข้าสู่เดือนกันยายน 2569 เรียบร้อยแล้ว!', 'success');
+        if (onDataChanged) onDataChanged('2569-09');
+      } else {
+        showNotice('ไม่สามารถโหลดข้อมูล 18 สาขาได้', 'error');
+      }
     } catch (err) {
       showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
     } finally {
@@ -266,6 +290,30 @@ export default function AdminDataManagerModal({
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>คลิก "เลือกดูเดือนนี้" เพื่อเปลี่ยนข้อมูลหน้าหลัก หรือคลิก "+ รวมข้อมูลสาขา" เพื่อเพิ่มสาขาเข้าเดือนเดิม</span>
                 <span className="font-semibold text-slate-700">ทั้งหมด {monthsList.length} เดือน</span>
+              </div>
+
+              {/* Quick 18 Branches Preload Banner */}
+              <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-700 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <h4 className="font-bold text-sm">ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)</h4>
+                    <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">
+                      พร้อมใช้งาน
+                    </span>
+                  </div>
+                  <p className="text-xs text-sky-100 leading-relaxed">
+                    เดือนกันยายน 2569 รวมข้อมูลครบทั้ง 18 สาขา (บางพลี, สุขุมวิท 50, วังน้อย, รามอินทรา, ราษฎร์บูรณะ, สำโรง, กรุงเทพกรีฑา, บางบัวทอง, ประชาชื่น, พระราม 2, ปทุมธานี, บุคคโล, พระราม 3, ปากเกร็ด, กิ่งแก้ว, พุทธมณฑลสาย 1, ประเวศ, ดอนเมือง) รวม 382 คัน รางวัล ฿850,070
+                  </p>
+                </div>
+                <button
+                  onClick={handleLoadAll18Branches}
+                  disabled={isProcessing}
+                  className="px-4 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>โหลดข้อมูล 18 สาขาทันที</span>
+                </button>
               </div>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white">

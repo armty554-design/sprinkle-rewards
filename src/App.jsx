@@ -23,7 +23,8 @@ import {
   saveNewMonth, 
   mergeBranchIntoMonth,
   getSelectedMonthKey, 
-  setSelectedMonthKey 
+  setSelectedMonthKey,
+  initStorage
 } from './utils/monthStorage';
 import { getPendingUsersCount } from './utils/userManagement';
 import { AlertCircle, CheckCircle2, LogOut, User, ShieldCheck, Database, Building2 } from 'lucide-react';
@@ -118,6 +119,13 @@ export default function App() {
     };
     window.addEventListener('sprinkle_users_updated', handleUsersUpdate);
     return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
+  }, []);
+
+  // Initialize persistent storage (IndexedDB + seed all 18 branches)
+  useEffect(() => {
+    initStorage().then(() => {
+      setAllMonthsList(getAllMonths());
+    });
   }, []);
 
   // Sync months on custom months update

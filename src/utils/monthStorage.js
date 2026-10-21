@@ -1,9 +1,16 @@
-// Month data manager supporting preloaded historical months and user-uploaded new months
+// Month data manager supporting preloaded historical months, user-uploaded new months,
+// and high-capacity IndexedDB storage for saving all 18 branches across multiple months without 5MB quota errors.
 import { PRELOADED_MONTHS } from '../data/allMonthsData.js';
+import { ALL_18_BRANCHES_MONTH_2569_09 } from '../data/all18BranchesData.js';
+import { idbSaveMonth, idbGetMonth, idbGetAllMonths, idbDeleteMonth } from './idbStorage.js';
 import Papa from 'papaparse';
 
 const STORAGE_CUSTOM_MONTHS = 'sprinkle_custom_months';
 const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
+
+// In-memory cache for fast synchronous access
+let customMonthsCache = null;
+let isInitialized = false;
 
 export const THAI_MONTH_NAMES = [
   '',
@@ -62,12 +69,107 @@ export function formatThaiMonthLabel(str) {
   return clean || str;
 }
 
+/**
+ * Trims empty trailing columns from a row to drastically reduce CSV memory/storage footprint
+ */
+function trimRowColumns(row, minKeep = 145) {
+  if (!Array.isArray(row)) return row;
+  let lastNonEmpty = row.length - 1;
+  while (lastNonEmpty >= minKeep && (!row[lastNonEmpty] || String(row[lastNonEmpty]).trim() === '')) {
+    lastNonEmpty--;
+  }
+  return row.slice(0, lastNonEmpty + 1);
+}
+
+/**
+ * Safely persists custom months into localStorage if size allows, without failing if quota is exceeded.
+ */
+function trySyncToLocalStorage(monthsObj) {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(monthsObj));
+  } catch (err) {
+    // LocalStorage quota exceeded (5MB limit reached) - safely fall back to IndexedDB
+    console.info('LocalStorage quota exceeded (5MB limit). Data is securely persisted in IndexedDB.');
+  }
+}
+
+/**
+ * Initialize storage on app startup:
+ * 1. Loads from IndexedDB
+ * 2. Seeds month 2569-09 with all 18 branches if not present or incomplete
+ * 3. Migrates any localStorage items to IndexedDB
+ */
+export async function initStorage() {
+  getCustomMonths();
+
+  try {
+    const idbMonths = await idbGetAllMonths();
+    let hasUpdates = false;
+
+    // Merge IDB into memory cache
+    if (idbMonths && Object.keys(idbMonths).length > 0) {
+      Object.keys(idbMonths).forEach(k => {
+        const item = idbMonths[k];
+        if (item && item.key) {
+          if (!customMonthsCache[item.key] || (item.uploadedAt && item.uploadedAt > (customMonthsCache[item.key].uploadedAt || ''))) {
+            customMonthsCache[item.key] = item;
+            hasUpdates = true;
+          }
+        }
+      });
+    }
+
+    // Migrate any cached months into IndexedDB
+    Object.keys(customMonthsCache).forEach(k => {
+      if (!idbMonths || !idbMonths[k]) {
+        idbSaveMonth(customMonthsCache[k]);
+      }
+    });
+
+    // Seed 2569-09 with ALL 18 BRANCHES if not already complete (382 vehicles)
+    const m09 = customMonthsCache['2569-09'] || PRELOADED_MONTHS['2569-09'];
+    const stats09 = m09 && m09.csv ? getMonthQuickStats(m09.csv) : { count: 0, branches: [] };
+    if (stats09.branches.length < 18) {
+      const all18Month = {
+        key: '2569-09',
+        label: 'กันยายน 2569',
+        csv: ALL_18_BRANCHES_MONTH_2569_09,
+        uploadedAt: new Date().toISOString(),
+        note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน, รางวัลรวม 850,070 บาท)'
+      };
+      customMonthsCache['2569-09'] = all18Month;
+      await idbSaveMonth(all18Month);
+      trySyncToLocalStorage(customMonthsCache);
+      hasUpdates = true;
+    }
+
+    isInitialized = true;
+    if (hasUpdates) {
+      window.dispatchEvent(new Event('sprinkle_months_updated'));
+    }
+    return true;
+  } catch (err) {
+    console.warn('initStorage failed:', err);
+    return false;
+  }
+}
+
 // Get list of all available months (Preloaded + User uploaded)
 export function getAllMonths() {
   const customMonths = getCustomMonths();
   
   // Combine preloaded and custom
   const all = { ...PRELOADED_MONTHS, ...customMonths };
+
+  // Make sure 2569-09 defaults to all 18 branches if not overridden in custom
+  if (!customMonths['2569-09']) {
+    all['2569-09'] = {
+      key: '2569-09',
+      label: 'กันยายน 2569',
+      csv: ALL_18_BRANCHES_MONTH_2569_09,
+      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
+    };
+  }
   
   // Normalize and clean each month
   const monthMap = new Map();
@@ -93,6 +195,16 @@ export function getMonthData(monthKey) {
   const customMonths = getCustomMonths();
   if (customMonths[normKey]) return customMonths[normKey];
   if (customMonths[monthKey]) return customMonths[monthKey];
+
+  if (normKey === '2569-09' || monthKey === '2569-09') {
+    return {
+      key: '2569-09',
+      label: 'กันยายน 2569',
+      csv: ALL_18_BRANCHES_MONTH_2569_09,
+      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
+    };
+  }
+
   if (PRELOADED_MONTHS[normKey]) return PRELOADED_MONTHS[normKey];
   if (PRELOADED_MONTHS[monthKey]) return PRELOADED_MONTHS[monthKey];
   
@@ -102,24 +214,28 @@ export function getMonthData(monthKey) {
 }
 
 export function getCustomMonths() {
+  if (customMonthsCache !== null) {
+    return customMonthsCache;
+  }
+
   try {
     const raw = localStorage.getItem(STORAGE_CUSTOM_MONTHS);
-    if (!raw) return {};
+    if (!raw) {
+      customMonthsCache = {};
+      return customMonthsCache;
+    }
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
+    if (!parsed || typeof parsed !== 'object') {
+      customMonthsCache = {};
+      return customMonthsCache;
+    }
 
-    let hasChanges = false;
     const sanitized = {};
-
     Object.keys(parsed).forEach(k => {
       const item = parsed[k];
       if (!item) return;
       const normKey = normalizeMonthKey(item.key || k);
       const cleanLabel = formatThaiMonthLabel(item.label || item.key || k);
-      
-      if (normKey !== k || cleanLabel !== item.label) {
-        hasChanges = true;
-      }
 
       sanitized[normKey] = {
         ...item,
@@ -128,13 +244,11 @@ export function getCustomMonths() {
       };
     });
 
-    if (hasChanges) {
-      localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(sanitized));
-    }
-
-    return sanitized;
+    customMonthsCache = sanitized;
+    return customMonthsCache;
   } catch (err) {
-    return {};
+    customMonthsCache = {};
+    return customMonthsCache;
   }
 }
 
@@ -143,17 +257,39 @@ export function saveNewMonth(monthKey, label, csvText, note = '') {
     const normKey = normalizeMonthKey(monthKey) || `month_${Date.now()}`;
     const cleanLabel = formatThaiMonthLabel(label || normKey);
     const customMonths = getCustomMonths();
-    customMonths[normKey] = {
+
+    // Optimize CSV by trimming trailing empty columns
+    let processedCsv = csvText;
+    try {
+      const parsed = Papa.parse(csvText, { skipEmptyLines: false });
+      if (parsed.data && parsed.data.length > 0) {
+        const trimmedRows = parsed.data.map(r => trimRowColumns(r));
+        processedCsv = Papa.unparse(trimmedRows);
+      }
+    } catch (e) {
+      processedCsv = csvText;
+    }
+
+    const monthObj = {
       key: normKey,
       label: cleanLabel,
-      csv: csvText,
+      csv: processedCsv,
       uploadedAt: new Date().toISOString(),
       note: note || 'อัปโหลดโดยผู้ใช้'
     };
-    localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(customMonths));
+
+    customMonths[normKey] = monthObj;
+    customMonthsCache = customMonths;
+
+    // Asynchronously save to IndexedDB (unlimited storage)
+    idbSaveMonth(monthObj);
+
+    // Try saving to localStorage for fallback
+    trySyncToLocalStorage(customMonths);
+
     setSelectedMonthKey(normKey);
     window.dispatchEvent(new Event('sprinkle_months_updated'));
-    return customMonths[normKey];
+    return monthObj;
   } catch (err) {
     console.error('Failed to save new month:', err);
     return null;
@@ -163,6 +299,7 @@ export function saveNewMonth(monthKey, label, csvText, note = '') {
 /**
  * Merge a branch's CSV records into an existing month (e.g. merge Bangplee into 2569-09 that already has Ramintra)
  * Prevents duplicate cars within the same branch and preserves all existing branch data.
+ * Saves directly into IndexedDB so all 18 branches can be saved simultaneously.
  */
 export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '') {
   try {
@@ -180,7 +317,8 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
     const newRows = newParsed.data || [];
 
     // Use headers from existing or new
-    const headerRows = existingRows.length >= 3 ? existingRows.slice(0, 3) : newRows.slice(0, 3);
+    const rawHeaderRows = existingRows.length >= 3 ? existingRows.slice(0, 3) : newRows.slice(0, 3);
+    const headerRows = rawHeaderRows.map(r => trimRowColumns(r));
 
     // Existing vehicle rows
     const existingVehicles = existingRows.slice(3).filter(r => {
@@ -199,11 +337,11 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
     const vehicleMap = new Map();
 
     existingVehicles.forEach(r => {
-      vehicleMap.set(vehicleKey(r), r);
+      vehicleMap.set(vehicleKey(r), trimRowColumns(r));
     });
 
     newVehicles.forEach(r => {
-      vehicleMap.set(vehicleKey(r), r);
+      vehicleMap.set(vehicleKey(r), trimRowColumns(r));
     });
 
     const combinedRows = [
@@ -215,18 +353,26 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
     const branchesFound = Array.from(new Set(Array.from(vehicleMap.values()).map(r => (r[0] || '').toString().trim()).filter(Boolean)));
 
     const customMonths = getCustomMonths();
-    customMonths[normKey] = {
+    const monthObj = {
       key: normKey,
       label: cleanLabel,
       csv: mergedCsv,
       uploadedAt: new Date().toISOString(),
-      note: note || `รวมข้อมูลสาขา (${branchesFound.join(', ')}) เรียบร้อย`
+      note: note || `รวมข้อมูลสาขา (${branchesFound.length} สาขา: ${branchesFound.join(', ')}) เรียบร้อย`
     };
 
-    localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(customMonths));
+    customMonths[normKey] = monthObj;
+    customMonthsCache = customMonths;
+
+    // Asynchronously save to IndexedDB (unlimited storage capacity)
+    idbSaveMonth(monthObj);
+
+    // Try sync to localStorage for fallback
+    trySyncToLocalStorage(customMonths);
+
     setSelectedMonthKey(normKey);
     window.dispatchEvent(new Event('sprinkle_months_updated'));
-    return customMonths[normKey];
+    return monthObj;
   } catch (err) {
     console.error('Failed to merge branch into month:', err);
     return null;
@@ -237,7 +383,14 @@ export function deleteCustomMonth(monthKey) {
   try {
     const customMonths = getCustomMonths();
     delete customMonths[monthKey];
-    localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(customMonths));
+    customMonthsCache = customMonths;
+
+    // Delete from IndexedDB
+    idbDeleteMonth(monthKey);
+
+    // Sync to localStorage
+    trySyncToLocalStorage(customMonths);
+
     window.dispatchEvent(new Event('sprinkle_months_updated'));
     return true;
   } catch (err) {

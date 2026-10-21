@@ -19,8 +19,18 @@ import {
   ListFilter
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import { parseCSVData } from '../utils/parser';
 import { formatThaiMonthLabel, normalizeMonthKey, mergeBranchIntoMonth, saveNewMonth } from '../utils/monthStorage';
+
+function isLikelyMonthSheet(name) {
+  if (!name) return false;
+  const s = String(name).trim().toLowerCase();
+  if (/pivot|ตาราง|summary|avg|sheet\d+|temp|test|template|ว่าง/i.test(s)) {
+    return false;
+  }
+  return true;
+}
 
 export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser }) {
   const [monthKey, setMonthKey] = useState('');
@@ -62,7 +72,9 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
           setWorkbook(wb);
           const names = wb.SheetNames || [];
           setSheetNames(names);
-          setCheckedSheets(names); // Default: select all sheets
+          // Default: select all valid month sheets, excluding pivot/summary sheets
+          const validSheets = names.filter(isLikelyMonthSheet);
+          setCheckedSheets(validSheets.length > 0 ? validSheets : names);
 
           // Pick the best sheet: prefer 2569-09 or latest or first
           const targetSheet = names.find(s => s === '2569-09') || names[names.length - 1] || names[0];
@@ -172,21 +184,39 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
         : '';
 
       sheetsToImport.forEach(sheetName => {
-        const sheet = workbook.Sheets[sheetName];
-        if (!sheet) return;
-        const text = XLSX.utils.sheet_to_csv(sheet);
-        if (!text || text.trim().length < 50) return;
+        try {
+          const sheet = workbook.Sheets[sheetName];
+          if (!sheet) return;
+          const text = XLSX.utils.sheet_to_csv(sheet);
+          if (!text || text.trim().length < 50) return;
 
-        const normKey = normalizeMonthKey(sheetName);
-        const cleanLabel = formatThaiMonthLabel(sheetName);
-        const noteStr = `นำเข้าประวัติย้อนหลัง ${sheetsToImport.length} เดือนจากไฟล์ ${fileName} (แผ่นงาน ${sheetName})${uploaderInfo}`;
-        
-        if (importMode === 'merge') {
-          mergeBranchIntoMonth(normKey, text, cleanLabel, noteStr);
-        } else {
-          saveNewMonth(normKey, cleanLabel, text, noteStr);
+          // Verify delivery car data exists in this sheet
+          const parsed = Papa.parse(text, { skipEmptyLines: false });
+          const rows = parsed.data || [];
+          const vehicles = rows.slice(3).filter(r => {
+            const c = (r[3] || '').toString().trim();
+            return c && c.length >= 3 && !isNaN(parseInt(c[0]));
+          });
+
+          // Skip sheets without car rows (e.g. Pivot tables, summary notes, empty sheets)
+          if (vehicles.length === 0) {
+            console.warn(`ข้ามแผ่นงาน ${sheetName} เนื่องจากไม่ใช่ตารางผลงานจัดส่งของรถ`);
+            return;
+          }
+
+          const normKey = normalizeMonthKey(sheetName);
+          const cleanLabel = formatThaiMonthLabel(sheetName);
+          const noteStr = `นำเข้าประวัติย้อนหลัง ${sheetsToImport.length} เดือนจากไฟล์ ${fileName} (แผ่นงาน ${sheetName})${uploaderInfo}`;
+          
+          if (importMode === 'merge') {
+            mergeBranchIntoMonth(normKey, text, cleanLabel, noteStr);
+          } else {
+            saveNewMonth(normKey, cleanLabel, text, noteStr);
+          }
+          count++;
+        } catch (sheetErr) {
+          console.warn(`เกิดข้อผิดพลาดกับแผ่นงาน ${sheetName}:`, sheetErr);
         }
-        count++;
       });
 
       window.dispatchEvent(new Event('sprinkle_months_updated'));
