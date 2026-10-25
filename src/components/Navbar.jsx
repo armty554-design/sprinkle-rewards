@@ -224,6 +224,21 @@ export default function Navbar({
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             </button>
 
+            {/* Tab 8: คะแนนแยกกลุ่มงาน (Looker Data) */}
+            <button
+              onClick={() => setActiveTab('looker_scores')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                activeTab === 'looker_scores'
+                  ? 'bg-emerald-600 text-white font-bold shadow-xs ring-1 ring-emerald-400'
+                  : 'text-emerald-900 hover:text-emerald-950 bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200/80 font-semibold'
+              }`}
+              title="ผลคะแนนแยก 4 กลุ่มงานตลอดทั้ง 9 เดือน ครบทั้ง 18 สาขา (Looker Data)"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${activeTab === 'looker_scores' ? 'text-white' : 'text-emerald-600'}`} />
+              <span>คะแนนกลุ่มงาน 69</span>
+              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-200/60 text-emerald-800 font-bold hidden sm:inline">Looker</span>
+            </button>
+
           </nav>
         </div>
       </div>

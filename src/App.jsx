@@ -15,6 +15,7 @@ import ExecutiveComparisonView from './components/ExecutiveComparisonView';
 import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
 import AnnualExcellenceView from './components/AnnualExcellenceView';
 import PercentM79View from './components/PercentM79View';
+import LookerScoresView from './components/LookerScoresView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -592,6 +593,11 @@ export default function App() {
         {/* TAB 7: ANNUAL EXCELLENCE 2569 VIEW */}
         {activeTab === 'excellence_annual' && (
           <AnnualExcellenceView />
+        )}
+
+        {/* TAB 8: LOOKER SCORES 2569 VIEW */}
+        {activeTab === 'looker_scores' && (
+          <LookerScoresView />
         )}
 
       </main>
