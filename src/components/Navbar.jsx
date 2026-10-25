@@ -35,13 +35,20 @@ export default function Navbar({
   selectedBranch = 'all', 
   branches = [] 
 }) {
+  // Format branch label compactly so 18 branches don't stretch the header
+  const branchDisplayLabel = selectedBranch !== 'all'
+    ? `สาขา ${selectedBranch}`
+    : (branches.length > 3 
+        ? `ครบทั้ง ${branches.length} สาขาปฏิบัติการ` 
+        : (branches.length > 0 ? `สาขา ${branches.join(', ')}` : `สาขา ${meta?.branch || 'รามอินทรา'}`));
+
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 no-print shadow-xs">
       
-      {/* TIER 1: BRAND, MONTH PICKER & QUICK TOOLS */}
+      {/* TIER 1: BRAND, COMPACT BRANCH & MONTH PICKER */}
       <div className="border-b border-slate-100 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 gap-3">
+          <div className="flex items-center justify-between h-13 gap-3">
             
             {/* Logo & Brand */}
             <div className="flex items-center space-x-3 shrink-0">
@@ -56,13 +63,13 @@ export default function Navbar({
                     รางวัลมาตรฐาน
                   </span>
                 </div>
-                <p className="text-[10px] sm:text-[11px] text-slate-400 truncate max-w-[200px] sm:max-w-none">
-                  สาขา {selectedBranch !== 'all' ? selectedBranch : (branches.length > 1 ? branches.join(', ') : meta.branch)}
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">
+                  {branchDisplayLabel}
                 </p>
               </div>
             </div>
 
-            {/* Middle & Right: Month Selector + Actions */}
+            {/* Middle & Right: Month Selector + Add Month + Sync */}
             <div className="flex items-center space-x-2 shrink-0">
               {/* Month Selector Pill */}
               <div className="relative flex items-center">
@@ -89,7 +96,7 @@ export default function Navbar({
                   className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">เพิ่มเดือน</span>
+                  <span>เพิ่มเดือน</span>
                 </button>
               )}
 
@@ -102,52 +109,24 @@ export default function Navbar({
               >
                 <RotateCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
               </button>
-
-              {/* Data Management Button */}
-              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor' || currentUser?.role === 'office') && (
-                <button
-                  onClick={onOpenDataManager}
-                  title="จัดการข้อมูลและสาขา"
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                >
-                  <Database className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="hidden md:inline">จัดการข้อมูล</span>
-                </button>
-              )}
-
-              {/* User Approval Button */}
-              {(currentUser?.role === 'admin' || currentUser?.role === 'supervisor' || currentUser?.role === 'office') && (
-                <button
-                  onClick={onOpenApprovalModal}
-                  title="จัดการและอนุมัติพนักงาน"
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-bold flex items-center gap-1.5 transition-all border border-sky-200 shadow-2xs cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-                  <span className="hidden lg:inline">อนุมัติพนักงาน</span>
-                  {pendingUsersCount > 0 && (
-                    <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
-                      {pendingUsersCount}
-                    </span>
-                  )}
-                </button>
-              )}
             </div>
 
           </div>
         </div>
       </div>
 
-      {/* TIER 2: DEDICATED NAVIGATION TAB BAR (7 TABS - NO OVERFLOW) */}
-      <div className="bg-slate-50/90 border-b border-slate-100 backdrop-blur-xs">
+      {/* TIER 2: STREAMLINED NAVIGATION TABS (7 TABS - FIT ALL SCREENS) */}
+      <div className="bg-slate-50/90 border-b border-slate-200/80 backdrop-blur-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex items-center gap-1.5 overflow-x-auto py-2 no-scrollbar text-xs font-medium">
+          <nav className="flex items-center gap-1.5 overflow-x-auto py-1.5 no-scrollbar text-xs font-medium">
             
+            {/* GROUP 1: OPERATIONAL TABS */}
             {/* Tab 1: ตรวจรายคัน */}
             <button
               onClick={() => setActiveTab('single')}
               className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
                 activeTab === 'single'
-                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200/80 ring-1 ring-sky-500/20'
+                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200 ring-1 ring-sky-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -160,12 +139,12 @@ export default function Navbar({
               onClick={() => setActiveTab('vehicles')}
               className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
                 activeTab === 'vehicles'
-                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200/80 ring-1 ring-sky-500/20'
+                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200 ring-1 ring-sky-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Truck className={`w-3.5 h-3.5 ${activeTab === 'vehicles' ? 'text-sky-500' : 'text-slate-400'}`} />
-              <span>ภาพรวมทุกคัน</span>
+              <span>ภาพรวม<span className="hidden sm:inline">ทุกคัน</span></span>
             </button>
 
             {/* Tab 3: สถิติสาขา */}
@@ -173,17 +152,18 @@ export default function Navbar({
               onClick={() => setActiveTab('analytics')}
               className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
                 activeTab === 'analytics'
-                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200/80 ring-1 ring-sky-500/20'
+                  ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200 ring-1 ring-sky-500/20'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <BarChart2 className={`w-3.5 h-3.5 ${activeTab === 'analytics' ? 'text-sky-500' : 'text-slate-400'}`} />
-              <span>สถิติสาขา</span>
+              <span>สถิติ<span className="hidden sm:inline">สาขา</span></span>
             </button>
 
-            {/* Separator */}
+            {/* Divider */}
             <div className="h-4 w-px bg-slate-300 mx-1 shrink-0" />
 
+            {/* GROUP 2: EXECUTIVE & REPORTS TABS */}
             {/* Tab 4: เปรียบเทียบผู้บริหาร */}
             <button
               onClick={() => setActiveTab('executive')}
@@ -192,10 +172,10 @@ export default function Navbar({
                   ? 'bg-slate-900 text-white font-bold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
-              title="ศูนย์ข้อมูลเปรียบเทียบสำหรับผู้บริหาร (ข้ามสาขา / ข้ามเดือน)"
+              title="เปรียบเทียบผู้บริหาร (ข้ามสาขา / ข้ามเดือน)"
             >
               <TrendingUp className={`w-3.5 h-3.5 ${activeTab === 'executive' ? 'text-sky-400' : 'text-slate-400'}`} />
-              <span>เปรียบเทียบผู้บริหาร</span>
+              <span>เปรียบเทียบ<span className="hidden md:inline">ผู้บริหาร</span></span>
             </button>
 
             {/* Tab 5: ตรวจสอบบันทึกข้อมูล */}
@@ -206,16 +186,16 @@ export default function Navbar({
                   ? 'bg-sky-600 text-white font-bold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
-              title="ตรวจสอบการบันทึกข้อมูลของทุกสาขา (อิงข้อมูลพนักงานออฟฟิศ)"
+              title="ตรวจสอบการบันทึกข้อมูลของทุกสาขา"
             >
               <ClipboardCheck className={`w-3.5 h-3.5 ${activeTab === 'audit' ? 'text-white' : 'text-slate-400'}`} />
-              <span>ตรวจสอบบันทึกข้อมูล</span>
+              <span>ตรวจบันทึก<span className="hidden md:inline">ข้อมูล</span></span>
             </button>
 
-            {/* Separator */}
+            {/* Divider */}
             <div className="h-4 w-px bg-slate-300 mx-1 shrink-0" />
 
-            {/* Tab 6 (NEW): เปอร์เซ็นต์ M7-9 */}
+            {/* Tab 6: เปอร์เซ็นต์ M7-9 */}
             <button
               onClick={() => setActiveTab('percent_m79')}
               className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
@@ -229,7 +209,7 @@ export default function Navbar({
               <span>เปอร์เซ็นต์ M7-9</span>
             </button>
 
-            {/* Tab 7 (NEW): รวมมาตรฐานยอดเยี่ยม 2569 */}
+            {/* Tab 7: รวมมาตรฐานยอดเยี่ยม 2569 */}
             <button
               onClick={() => setActiveTab('excellence_annual')}
               className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
@@ -240,7 +220,7 @@ export default function Navbar({
               title="สรุปผลคะแนนและเงินรางวัลมาตรฐานทั้งปี 2569 รายคัน"
             >
               <Trophy className={`w-3.5 h-3.5 ${activeTab === 'excellence_annual' ? 'text-amber-950' : 'text-amber-600'}`} />
-              <span>รวมมาตรฐานยอดเยี่ยม 2569</span>
+              <span>มาตรฐานยอดเยี่ยม <span className="hidden sm:inline">2569</span></span>
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             </button>
 
