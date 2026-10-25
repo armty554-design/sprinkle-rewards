@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Trophy, 
   Search, 
@@ -21,13 +21,26 @@ import {
 } from 'lucide-react';
 import { RAW_ANNUAL_EXCELLENCE_CSV } from '../data/annualExcellenceData.js';
 import { parseAnnualExcellenceData } from '../utils/annualExcellenceParser.js';
+import { idbSetItem, idbGetItem } from '../utils/idbStorage.js';
 
 export default function AnnualExcellenceView() {
   const [csvData, setCsvData] = useState(() => {
     // Check localStorage cache or fallback to bundled snapshot
-    const cached = localStorage.getItem('sprinkle_annual_excellence_csv');
-    return cached || RAW_ANNUAL_EXCELLENCE_CSV;
+    try {
+      const cached = localStorage.getItem('sprinkle_annual_excellence_csv');
+      if (cached && cached.length > 500) return cached;
+    } catch (e) {}
+    return RAW_ANNUAL_EXCELLENCE_CSV;
   });
+
+  // Hydrate from IndexedDB (bypasses 5MB limit)
+  useEffect(() => {
+    idbGetItem('sprinkle_annual_excellence_csv').then(saved => {
+      if (saved && saved.length > 500) {
+        setCsvData(saved);
+      }
+    });
+  }, []);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,7 +96,12 @@ export default function AnnualExcellenceView() {
       if (!text || text.length < 500) throw new Error('ข้อมูลจากชีตไม่สมบูรณ์');
 
       setCsvData(text);
-      localStorage.setItem('sprinkle_annual_excellence_csv', text);
+      await idbSetItem('sprinkle_annual_excellence_csv', text);
+      try {
+        localStorage.setItem('sprinkle_annual_excellence_csv', text);
+      } catch (e) {
+        // LocalStorage quota reached, safely ignored since saved in IndexedDB & memory
+      }
       setSyncNotice({ type: 'success', msg: 'ซิงค์ข้อมูลมาตรฐานยอดเยี่ยม 2569 ล่าสุดเรียบร้อยแล้ว!' });
     } catch (err) {
       setSyncNotice({ type: 'error', msg: `ซิงค์ไม่สำเร็จ: ${err.message}` });

@@ -130,3 +130,16 @@ export async function idbDeleteMonth(monthKey) {
     }
   });
 }
+
+// Generic Key-Value persistence over IndexedDB (bypasses 5MB localStorage limit)
+export async function idbSetItem(key, value) {
+  if (!key) return false;
+  return idbSaveMonth({ key, value, updatedAt: new Date().toISOString() });
+}
+
+export async function idbGetItem(key) {
+  if (!key) return null;
+  const item = await idbGetMonth(key);
+  return item ? (item.value !== undefined ? item.value : item) : null;
+}
+

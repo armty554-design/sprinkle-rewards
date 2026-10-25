@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   BarChart3, 
   RotateCw, 
@@ -15,12 +15,25 @@ import {
 } from 'lucide-react';
 import { RAW_PERCENT_M79_CSV } from '../data/percentM79Data.js';
 import { parsePercentM79Data } from '../utils/percentM79Parser.js';
+import { idbSetItem, idbGetItem } from '../utils/idbStorage.js';
 
 export default function PercentM79View() {
   const [csvData, setCsvData] = useState(() => {
-    const cached = localStorage.getItem('sprinkle_percent_m79_csv');
-    return cached || RAW_PERCENT_M79_CSV;
+    try {
+      const cached = localStorage.getItem('sprinkle_percent_m79_csv');
+      if (cached && cached.length > 500) return cached;
+    } catch (e) {}
+    return RAW_PERCENT_M79_CSV;
   });
+
+  // Hydrate from IndexedDB (bypasses 5MB limit)
+  useEffect(() => {
+    idbGetItem('sprinkle_percent_m79_csv').then(saved => {
+      if (saved && saved.length > 500) {
+        setCsvData(saved);
+      }
+    });
+  }, []);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncNotice, setSyncNotice] = useState(null);
@@ -43,7 +56,12 @@ export default function PercentM79View() {
       if (!text || text.length < 500) throw new Error('ข้อมูลจากชีตไม่สมบูรณ์');
 
       setCsvData(text);
-      localStorage.setItem('sprinkle_percent_m79_csv', text);
+      await idbSetItem('sprinkle_percent_m79_csv', text);
+      try {
+        localStorage.setItem('sprinkle_percent_m79_csv', text);
+      } catch (e) {
+        // LocalStorage quota reached, safely ignored since saved in IndexedDB
+      }
       setSyncNotice({ type: 'success', msg: 'ซิงค์ข้อมูลเปอร์เซ็นต์ M7-9 ล่าสุดเรียบร้อยแล้ว!' });
     } catch (err) {
       setSyncNotice({ type: 'error', msg: `ซิงค์ไม่สำเร็จ: ${err.message}` });
