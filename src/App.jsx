@@ -13,6 +13,8 @@ import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
 import ExecutiveComparisonView from './components/ExecutiveComparisonView';
 import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
+import AnnualExcellenceView from './components/AnnualExcellenceView';
+import PercentM79View from './components/PercentM79View';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -449,8 +451,8 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บผู้บริหารหรือแท็บตรวจบันทึกเพื่อความกระชับ) */}
-        {activeTab !== 'executive' && activeTab !== 'audit' && (
+        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บรายงานพิเศษเพื่อความกระชับ) */}
+        {activeTab !== 'executive' && activeTab !== 'audit' && activeTab !== 'percent_m79' && activeTab !== 'excellence_annual' && (
           <DashboardStats 
             summary={activeSummary} 
             onFilterChange={(key, val) => {
@@ -580,6 +582,16 @@ export default function App() {
               setActiveTab('vehicles');
             }}
           />
+        )}
+
+        {/* TAB 6: PERCENT M7-9 VIEW */}
+        {activeTab === 'percent_m79' && (
+          <PercentM79View />
+        )}
+
+        {/* TAB 7: ANNUAL EXCELLENCE 2569 VIEW */}
+        {activeTab === 'excellence_annual' && (
+          <AnnualExcellenceView />
         )}
 
       </main>
