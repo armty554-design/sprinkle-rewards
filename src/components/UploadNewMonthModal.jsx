@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { parseCSVData } from '../utils/parser';
+import { parseCSVData, splitLookerCsvByMonth, LOOKER_CSV_URL } from '../utils/parser';
 import { formatThaiMonthLabel, normalizeMonthKey, mergeBranchIntoMonth, saveNewMonth } from '../utils/monthStorage';
 
 function isLikelyMonthSheet(name) {
@@ -38,6 +38,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
   const [note, setNote] = useState('');
   const [csvContent, setCsvContent] = useState('');
   const [preview, setPreview] = useState(null);
+  const [lookerMonthsSummary, setLookerMonthsSummary] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [tab, setTab] = useState('file'); // 'file' or 'sheet'
@@ -144,16 +145,43 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
   const processCsv = (text, fName, sheetName = '') => {
     try {
       const parsed = parseCSVData(text);
+      if (!parsed.vehicles || parsed.vehicles.length === 0) {
+        throw new Error('ไม่พบข้อมูลรถในไฟล์ที่เลือก');
+      }
       setCsvContent(text);
       setPreview(parsed);
-      
-      // Auto deduce clean month key and Thai label
-      const sourceStr = sheetName || parsed.meta.month || fName;
-      const normKey = normalizeMonthKey(sourceStr);
-      const cleanLabel = formatThaiMonthLabel(sourceStr);
 
-      setMonthKey(normKey || `month_${Date.now()}`);
-      setMonthLabel(cleanLabel || parsed.meta.month || normKey);
+      const lookerMap = splitLookerCsvByMonth(text);
+      const lookerKeys = Object.keys(lookerMap).sort();
+      if (lookerKeys.length > 0) {
+        const latestKey = lookerKeys[lookerKeys.length - 1];
+        const branchSet = new Set();
+        let totalVehicles = 0;
+        let totalReward = 0;
+        lookerKeys.forEach(k => {
+          lookerMap[k].branches.forEach(b => branchSet.add(b));
+          totalVehicles += lookerMap[k].vehicleCount;
+          totalReward += lookerMap[k].totalReward;
+        });
+        setLookerMonthsSummary({
+          monthCount: lookerKeys.length,
+          keys: lookerKeys,
+          branchCount: branchSet.size,
+          totalVehicles,
+          totalReward
+        });
+        setMonthKey(latestKey);
+        setMonthLabel(lookerMap[latestKey].label);
+      } else {
+        setLookerMonthsSummary(null);
+        // Auto deduce clean month key and Thai label
+        const sourceStr = sheetName || parsed.meta.month || fName;
+        const normKey = normalizeMonthKey(sourceStr);
+        const cleanLabel = formatThaiMonthLabel(sourceStr);
+
+        setMonthKey(normKey || `month_${Date.now()}`);
+        setMonthLabel(cleanLabel || parsed.meta.month || normKey);
+      }
     } catch (err) {
       setError('ข้อมูลในไฟล์ไม่ตรงตามรูปแบบ: ' + err.message);
     } finally {
@@ -253,7 +281,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!csvContent) {
       setError('กรุณาเลือกไฟล์ข้อมูลเดือนใหม่');
@@ -267,7 +295,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
       : '';
     const finalNote = (note ? `${note}${uploaderInfo}` : `อัพโหลดโดย: ${currentUser?.name || 'แอดมิน'}`).trim();
 
-    onMonthAdded(finalKey, finalLabel, csvContent, finalNote, importMode);
+    await onMonthAdded(finalKey, finalLabel, csvContent, finalNote, lookerMonthsSummary ? 'looker_multi' : importMode);
     onClose();
   };
 
@@ -408,15 +436,24 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
                   className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 font-mono"
                 />
               </div>
-              <button
-                type="button"
-                onClick={handleSheetFetch}
-                disabled={isLoading || !sheetUrl}
-                className="w-full py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-              >
-                <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>{isLoading ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลชีต'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSheetFetch}
+                  disabled={isLoading || !sheetUrl}
+                  className="flex-1 py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>{isLoading ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลชีต'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSheetUrl(LOOKER_CSV_URL.replace('/export?format=csv&', '/edit?'))}
+                  className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors shrink-0"
+                >
+                  ใช้ลิงก์ Looker 69
+                </button>
+              </div>
             </div>
           )}
 
@@ -617,25 +654,35 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
 
           {/* Preview Card if File loaded */}
           {preview && (
-            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 text-xs">
-              <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2">
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span>ตรวจพบข้อมูลเรียบร้อยแล้ว:</span>
+            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2 text-emerald-800 font-bold">
+                <span className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>
+                    {lookerMonthsSummary
+                      ? `ตรวจพบข้อมูล Looker 69 ครบ ${lookerMonthsSummary.monthCount} เดือน (${lookerMonthsSummary.keys[0]} – ${lookerMonthsSummary.keys[lookerMonthsSummary.keys.length - 1]})`
+                      : 'ตรวจพบข้อมูลเรียบร้อยแล้ว:'}
+                  </span>
+                </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-slate-700">
                 <div>
                   <span className="text-slate-500 block text-[11px]">สาขาที่ตรวจพบ</span>
                   <strong className="text-slate-900 font-bold text-sm text-sky-700">
-                    {preview.meta.branch || 'ไม่ระบุ'}
+                    {lookerMonthsSummary ? `ครบ ${lookerMonthsSummary.branchCount} สาขา` : (preview.meta.branch || 'ไม่ระบุ')}
                   </strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">จำนวนรถ</span>
-                  <strong className="text-slate-900 font-bold text-sm">{preview.summary.totalVehicles} คัน</strong>
+                  <strong className="text-slate-900 font-bold text-sm">
+                    {(lookerMonthsSummary ? lookerMonthsSummary.totalVehicles : preview.summary.totalVehicles).toLocaleString()} คัน
+                  </strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[11px]">ยอดเงินรางวัลรวม</span>
-                  <strong className="text-emerald-700 font-bold text-sm">฿{preview.summary.totalRewards.toLocaleString()}</strong>
+                  <strong className="text-emerald-700 font-bold text-sm">
+                    ฿{(lookerMonthsSummary ? lookerMonthsSummary.totalReward : preview.summary.totalRewards).toLocaleString()}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -668,7 +715,11 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
               className="px-5 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
             >
               <Check className="w-4 h-4" />
-              <span>บันทึกและเปิดดูข้อมูลเดือนนี้</span>
+              <span>
+                {lookerMonthsSummary
+                  ? `นำเข้าและอัปเดตทั้ง ${lookerMonthsSummary.monthCount} เดือนจาก Looker`
+                  : 'บันทึกและเปิดดูข้อมูลเดือนนี้'}
+              </span>
             </button>
           </div>
 

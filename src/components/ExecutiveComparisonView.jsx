@@ -185,9 +185,10 @@ export default function ExecutiveComparisonView({
       totalPendingDeductions,
       totalComplaints,
       totalWarnings,
+      isSummaryOnly: Boolean(data?.meta?.isSummaryOnly),
       topBranch: branchComparisonData[0] || null
     };
-  }, [branchComparisonData]);
+  }, [branchComparisonData, data]);
 
   // 3. MULTI-MONTH HISTORICAL TREND DATA
   const historicalTrendData = useMemo(() => {
@@ -297,7 +298,8 @@ export default function ExecutiveComparisonView({
         pendingDeductions,
         totalDefects,
         totalComplaints,
-        totalWarnings
+        totalWarnings,
+        isSummaryOnly: Boolean(parsed.meta?.isSummaryOnly)
       };
     };
 
@@ -460,9 +462,15 @@ export default function ExecutiveComparisonView({
               <div className="text-xl sm:text-2xl font-black text-amber-400 mt-0.5">
                 ฿{companySummary.totalPendingDeductions.toLocaleString()}
               </div>
-              <span className="text-[10px] text-slate-300 block mt-0.5">
-                ข้อร้องเรียน {companySummary.totalComplaints} ครั้ง | เตือน {companySummary.totalWarnings} ใบ
-              </span>
+              {companySummary.isSummaryOnly ? (
+                <span className="text-[10px] text-amber-200/90 block mt-0.5">
+                  ข้อมูลสรุปรายกลุ่ม (Looker 69) — ไม่มีข้อมูลข้อร้องเรียน/ใบเตือนรายข้อ
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-300 block mt-0.5">
+                  ข้อร้องเรียน {companySummary.totalComplaints} ครั้ง | เตือน {companySummary.totalWarnings} ใบ
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -648,23 +656,32 @@ export default function ExecutiveComparisonView({
                       </div>
 
                       {/* Operational Alerts & Risk indicators */}
-                      <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <AlertTriangle className={`w-4 h-4 ${branch.complaintsCount > 0 ? 'text-amber-500' : 'text-slate-300'}`} />
-                          <span className="text-slate-600 font-medium">ข้อร้องเรียน:</span>
-                          <strong className={branch.complaintsCount > 0 ? 'text-amber-700' : 'text-slate-700'}>
-                            {branch.complaintsCount} ครั้ง
-                          </strong>
+                      {data?.meta?.isSummaryOnly ? (
+                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>โหมดข้อมูล: สรุปรายกลุ่ม (Looker 69)</span>
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                            ไม่มีแยกรายข้อ 1.1–4.7
+                          </span>
                         </div>
+                      ) : (
+                        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <AlertTriangle className={`w-4 h-4 ${branch.complaintsCount > 0 ? 'text-amber-500' : 'text-slate-300'}`} />
+                            <span className="text-slate-600 font-medium">ข้อร้องเรียน:</span>
+                            <strong className={branch.complaintsCount > 0 ? 'text-amber-700' : 'text-slate-700'}>
+                              {branch.complaintsCount} ครั้ง
+                            </strong>
+                          </div>
 
-                        <div className="flex items-center gap-1.5">
-                          <ShieldAlert className={`w-4 h-4 ${branch.warningLetters > 0 ? 'text-rose-500' : 'text-slate-300'}`} />
-                          <span className="text-slate-600 font-medium">ใบเตือน:</span>
-                          <strong className={branch.warningLetters > 0 ? 'text-rose-600' : 'text-slate-700'}>
-                            {branch.warningLetters} ใบ
-                          </strong>
+                          <div className="flex items-center gap-1.5">
+                            <ShieldAlert className={`w-4 h-4 ${branch.warningLetters > 0 ? 'text-rose-500' : 'text-slate-300'}`} />
+                            <span className="text-slate-600 font-medium">ใบเตือน:</span>
+                            <strong className={branch.warningLetters > 0 ? 'text-rose-600' : 'text-slate-700'}>
+                              {branch.warningLetters} ใบ
+                            </strong>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Pending deduction bottom indicator */}
@@ -858,12 +875,20 @@ export default function ExecutiveComparisonView({
                     <td className="py-3 px-4 font-semibold text-slate-800">ข้อร้องเรียนทั้งหมด (ครั้ง)</td>
                     {branchComparisonData.map(b => (
                       <td key={b.branchName} className="py-3 px-4 text-right font-bold text-amber-700">
-                        {b.complaintsCount} ครั้ง
+                        {data?.meta?.isSummaryOnly ? (
+                          <span className="text-xs font-medium text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
+                        ) : (
+                          `${b.complaintsCount} ครั้ง`
+                        )}
                       </td>
                     ))}
                     {branchComparisonData.length > 1 && (
                       <td className="py-3 px-4 text-right font-bold text-amber-900 bg-sky-50/40">
-                        {companySummary?.totalComplaints} ครั้ง
+                        {data?.meta?.isSummaryOnly ? (
+                          <span className="text-xs font-medium text-slate-400">-</span>
+                        ) : (
+                          `${companySummary?.totalComplaints} ครั้ง`
+                        )}
                       </td>
                     )}
                   </tr>
@@ -873,12 +898,20 @@ export default function ExecutiveComparisonView({
                     <td className="py-3 px-4 font-semibold text-slate-800">หนังสือเตือนพนักงาน (ใบ)</td>
                     {branchComparisonData.map(b => (
                       <td key={b.branchName} className="py-3 px-4 text-right font-bold text-rose-600">
-                        {b.warningLetters} ใบ
+                        {data?.meta?.isSummaryOnly ? (
+                          <span className="text-xs font-medium text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
+                        ) : (
+                          `${b.warningLetters} ใบ`
+                        )}
                       </td>
                     ))}
                     {branchComparisonData.length > 1 && (
                       <td className="py-3 px-4 text-right font-bold text-rose-800 bg-sky-50/40">
-                        {companySummary?.totalWarnings} ใบ
+                        {data?.meta?.isSummaryOnly ? (
+                          <span className="text-xs font-medium text-slate-400">-</span>
+                        ) : (
+                          `${companySummary?.totalWarnings} ใบ`
+                        )}
                       </td>
                     )}
                   </tr>
@@ -1357,13 +1390,31 @@ export default function ExecutiveComparisonView({
                     {/* Complaints */}
                     <tr className="hover:bg-slate-50/50">
                       <td className="py-3 px-4 font-semibold text-slate-800">ข้อร้องเรียนทั้งหมด</td>
-                      <td className="py-3 px-4 text-right">{h2hData.monthA.summary.totalComplaints} ครั้ง</td>
-                      <td className="py-3 px-4 text-right font-bold bg-sky-50/30">{h2hData.monthB.summary.totalComplaints} ครั้ง</td>
+                      <td className="py-3 px-4 text-right">
+                        {h2hData.monthA.summary.isSummaryOnly ? (
+                          <span className="text-xs text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
+                        ) : (
+                          `${h2hData.monthA.summary.totalComplaints} ครั้ง`
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold bg-sky-50/30">
+                        {h2hData.monthB.summary.isSummaryOnly ? (
+                          <span className="text-xs font-normal text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
+                        ) : (
+                          `${h2hData.monthB.summary.totalComplaints} ครั้ง`
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-right font-medium">
-                        {h2hData.delta.totalComplaints >= 0 ? `+${h2hData.delta.totalComplaints}` : h2hData.delta.totalComplaints} ครั้ง
+                        {(h2hData.monthA.summary.isSummaryOnly || h2hData.monthB.summary.isSummaryOnly) ? (
+                          <span className="text-slate-400">-</span>
+                        ) : (
+                          `${h2hData.delta.totalComplaints >= 0 ? `+${h2hData.delta.totalComplaints}` : h2hData.delta.totalComplaints} ครั้ง`
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {h2hData.delta.totalComplaints <= 0 ? (
+                        {(h2hData.monthA.summary.isSummaryOnly || h2hData.monthB.summary.isSummaryOnly) ? (
+                          <span className="text-xs text-slate-400">ข้อมูลสรุปรายกลุ่ม</span>
+                        ) : h2hData.delta.totalComplaints <= 0 ? (
                           <span className="text-emerald-600 font-bold">ลดลง</span>
                         ) : (
                           <span className="text-rose-600 font-bold">เพิ่มขึ้น</span>

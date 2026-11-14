@@ -1,12 +1,14 @@
-// Month data manager supporting preloaded historical months, user-uploaded new months,
+// Month data manager supporting preloaded Looker 69 months, user-uploaded months,
 // and high-capacity IndexedDB storage for saving all 18 branches across multiple months without 5MB quota errors.
 import { PRELOADED_MONTHS } from '../data/allMonthsData.js';
-import { ALL_18_BRANCHES_MONTH_2569_09 } from '../data/all18BranchesData.js';
-import { idbSaveMonth, idbGetMonth, idbGetAllMonths, idbDeleteMonth } from './idbStorage.js';
+import { idbSaveMonth, idbGetAllMonths, idbDeleteMonth } from './idbStorage.js';
 import Papa from 'papaparse';
+import { isLookerFormat, buildLookerColMap, splitLookerCsvByMonth, LOOKER_GID } from './lookerParser.js';
 
 const STORAGE_CUSTOM_MONTHS = 'sprinkle_custom_months';
 const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
+const STORAGE_LOOKER_VERSION = 'sprinkle_looker_clean_reset_v1';
+const LOOKER_CLEAN_VERSION = 'looker69_clean_v1';
 
 // In-memory cache for fast synchronous access
 let customMonthsCache = null;
@@ -93,54 +95,78 @@ function trySyncToLocalStorage(monthsObj) {
   }
 }
 
+function getLatestPreloadedKey() {
+  const keys = Object.keys(PRELOADED_MONTHS).sort();
+  return keys[keys.length - 1] || '2569-09';
+}
+
+/**
+ * Removes all previously cached/uploaded monthly & daily datasets from IndexedDB and localStorage
+ * so only the clean Looker 69 dataset remains.
+ */
+export async function clearAndResetToLookerMonths({ dispatch = true } = {}) {
+  try {
+    const idbMonths = await idbGetAllMonths();
+    if (idbMonths) {
+      for (const key of Object.keys(idbMonths)) {
+        await idbDeleteMonth(key);
+      }
+    }
+  } catch (err) {
+    console.warn('Error clearing IDB custom months:', err);
+  }
+
+  customMonthsCache = {};
+  localStorage.removeItem(STORAGE_CUSTOM_MONTHS);
+  localStorage.removeItem('sprinkle_current_data');
+  localStorage.removeItem('sprinkle_daily_history');
+  const latestKey = getLatestPreloadedKey();
+  localStorage.setItem(STORAGE_SELECTED_MONTH, latestKey);
+  localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
+
+  if (dispatch) {
+    window.dispatchEvent(new Event('sprinkle_months_updated'));
+  }
+  return latestKey;
+}
+
 /**
  * Initialize storage on app startup:
- * 1. Loads from IndexedDB
- * 2. Seeds month 2569-09 with all 18 branches if not present or incomplete
+ * 1. Performs a one-time clean reset of old cached months on upgrade to Looker 69
+ * 2. Loads custom/synced months from IndexedDB into memory cache
  * 3. Migrates any localStorage items to IndexedDB
  */
 export async function initStorage() {
   getCustomMonths();
 
   try {
-    const idbMonths = await idbGetAllMonths();
     let hasUpdates = false;
 
-    // Merge IDB into memory cache
-    if (idbMonths && Object.keys(idbMonths).length > 0) {
-      Object.keys(idbMonths).forEach(k => {
-        const item = idbMonths[k];
-        if (item && item.key) {
-          if (!customMonthsCache[item.key] || (item.uploadedAt && item.uploadedAt > (customMonthsCache[item.key].uploadedAt || ''))) {
-            customMonthsCache[item.key] = item;
-            hasUpdates = true;
+    if (localStorage.getItem(STORAGE_LOOKER_VERSION) !== LOOKER_CLEAN_VERSION) {
+      await clearAndResetToLookerMonths({ dispatch: false });
+      hasUpdates = true;
+    } else {
+      const idbMonths = await idbGetAllMonths();
+
+      // Merge IDB into memory cache
+      if (idbMonths && Object.keys(idbMonths).length > 0) {
+        Object.keys(idbMonths).forEach(k => {
+          const item = idbMonths[k];
+          if (item && item.key) {
+            if (!customMonthsCache[item.key] || (item.uploadedAt && item.uploadedAt > (customMonthsCache[item.key].uploadedAt || ''))) {
+              customMonthsCache[item.key] = item;
+              hasUpdates = true;
+            }
           }
+        });
+      }
+
+      // Migrate any cached months into IndexedDB
+      Object.keys(customMonthsCache).forEach(k => {
+        if (!idbMonths || !idbMonths[k]) {
+          idbSaveMonth(customMonthsCache[k]);
         }
       });
-    }
-
-    // Migrate any cached months into IndexedDB
-    Object.keys(customMonthsCache).forEach(k => {
-      if (!idbMonths || !idbMonths[k]) {
-        idbSaveMonth(customMonthsCache[k]);
-      }
-    });
-
-    // Seed 2569-09 with ALL 18 BRANCHES if not already complete (382 vehicles)
-    const m09 = customMonthsCache['2569-09'] || PRELOADED_MONTHS['2569-09'];
-    const stats09 = m09 && m09.csv ? getMonthQuickStats(m09.csv) : { count: 0, branches: [] };
-    if (stats09.branches.length < 18) {
-      const all18Month = {
-        key: '2569-09',
-        label: 'กันยายน 2569',
-        csv: ALL_18_BRANCHES_MONTH_2569_09,
-        uploadedAt: new Date().toISOString(),
-        note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน, รางวัลรวม 850,070 บาท)'
-      };
-      customMonthsCache['2569-09'] = all18Month;
-      await idbSaveMonth(all18Month);
-      trySyncToLocalStorage(customMonthsCache);
-      hasUpdates = true;
     }
 
     isInitialized = true;
@@ -154,23 +180,56 @@ export async function initStorage() {
   }
 }
 
-// Get list of all available months (Preloaded + User uploaded)
+/**
+ * Syncs all months parsed from the live Looker 69 CSV export into storage + IndexedDB.
+ */
+export async function syncLookerMonthsToStorage(lookerCsvText) {
+  const monthsMap = splitLookerCsvByMonth(lookerCsvText);
+  const syncedKeys = Object.keys(monthsMap).sort();
+  if (syncedKeys.length === 0) {
+    return { syncedKeys: [], monthsMap: {} };
+  }
+
+  const customMonths = getCustomMonths();
+  const now = new Date().toISOString();
+
+  for (const key of syncedKeys) {
+    const item = monthsMap[key];
+    const monthObj = {
+      key,
+      label: item.label,
+      gid: LOOKER_GID,
+      source: 'looker69',
+      isLooker: true,
+      csv: item.csv,
+      uploadedAt: now,
+      note: `ข้อมูลครบทั้ง ${item.branches.length} สาขา จาก Looker 69 (${item.vehicleCount} คัน, รางวัลรวม ฿${item.totalReward.toLocaleString()})`
+    };
+    customMonths[key] = monthObj;
+    await idbSaveMonth(monthObj);
+  }
+
+  customMonthsCache = customMonths;
+  trySyncToLocalStorage(customMonths);
+  localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
+
+  const latestSyncedKey = syncedKeys[syncedKeys.length - 1];
+  const currentSelected = getSelectedMonthKey();
+  if (!syncedKeys.includes(currentSelected) && latestSyncedKey) {
+    setSelectedMonthKey(latestSyncedKey);
+  }
+
+  window.dispatchEvent(new Event('sprinkle_months_updated'));
+  return { syncedKeys, monthsMap };
+}
+
+// Get list of all available months (Preloaded Looker 69 + User uploaded/synced)
 export function getAllMonths() {
   const customMonths = getCustomMonths();
-  
-  // Combine preloaded and custom
+
+  // Combine preloaded Looker 69 months and synced/custom updates
   const all = { ...PRELOADED_MONTHS, ...customMonths };
 
-  // Make sure 2569-09 defaults to all 18 branches if not overridden in custom
-  if (!customMonths['2569-09']) {
-    all['2569-09'] = {
-      key: '2569-09',
-      label: 'กันยายน 2569',
-      csv: ALL_18_BRANCHES_MONTH_2569_09,
-      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
-    };
-  }
-  
   // Normalize and clean each month
   const monthMap = new Map();
   Object.keys(all).forEach(k => {
@@ -189,19 +248,15 @@ export function getAllMonths() {
     });
   });
 
-  // Sort descending chronologically (e.g. 2569-09, 2569-08, ..., 2567-10)
+  // Sort descending chronologically (e.g. 2569-09, 2569-08, ..., 2569-01)
   const sorted = Array.from(monthMap.values()).sort((a, b) => b.key.localeCompare(a.key));
   return sorted;
 }
 
 export function getMonthData(monthKey) {
+  const latestKey = getLatestPreloadedKey();
   if (!monthKey || String(monthKey).startsWith('sprinkle_') || String(monthKey).includes('sync_time')) {
-    return {
-      key: '2569-09',
-      label: 'กันยายน 2569',
-      csv: ALL_18_BRANCHES_MONTH_2569_09,
-      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
-    };
+    return getMonthData(latestKey);
   }
 
   const normKey = normalizeMonthKey(monthKey);
@@ -209,18 +264,9 @@ export function getMonthData(monthKey) {
   if (customMonths[normKey] && customMonths[normKey].csv) return customMonths[normKey];
   if (customMonths[monthKey] && customMonths[monthKey].csv) return customMonths[monthKey];
 
-  if (normKey === '2569-09' || monthKey === '2569-09') {
-    return {
-      key: '2569-09',
-      label: 'กันยายน 2569',
-      csv: ALL_18_BRANCHES_MONTH_2569_09,
-      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
-    };
-  }
-
   if (PRELOADED_MONTHS[normKey] && PRELOADED_MONTHS[normKey].csv) return PRELOADED_MONTHS[normKey];
   if (PRELOADED_MONTHS[monthKey] && PRELOADED_MONTHS[monthKey].csv) return PRELOADED_MONTHS[monthKey];
-  
+
   // Fallback to latest valid month
   const all = getAllMonths();
   return all.find(m => m && m.csv) || all[0] || null;
@@ -339,46 +385,83 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
     const existingRows = existingParsed.data || [];
     const newRows = newParsed.data || [];
 
-    // Use headers from existing or new
-    const rawHeaderRows = existingRows.length >= 3 ? existingRows.slice(0, 3) : newRows.slice(0, 3);
-    const headerRows = rawHeaderRows.map(r => trimRowColumns(r));
+    const existingIsLooker = isLookerFormat(existingRows);
+    const newIsLooker = isLookerFormat(newRows);
 
-    // Existing vehicle rows
-    const existingVehicles = existingRows.slice(3).filter(r => {
-      const c = (r[3] || '').toString().trim();
-      return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-    });
+    if (existingIsLooker !== newIsLooker) {
+      // Replace incompatible legacy format only when uploading fresh Looker data; avoid mixing 170-col rows into 49-col headers
+      if (newIsLooker) {
+        return saveNewMonth(normKey, cleanLabel, branchCsv, note);
+      }
+      console.warn('Cannot merge 170-col rows directly into 49-col Looker month without replacing schema.');
+      return null;
+    }
 
-    // New vehicle rows
-    const newVehicles = newRows.slice(3).filter(r => {
-      const c = (r[3] || '').toString().trim();
-      return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-    });
+    let combinedRows = [];
+    let branchesFound = [];
 
-    // Distinguish by branch + carCode so cars across different branches don't collide
-    const vehicleKey = (r) => `${(r[0] || '').toString().trim()}_${(r[3] || '').toString().trim()}`;
-    const vehicleMap = new Map();
+    if (existingIsLooker && newIsLooker) {
+      const col = buildLookerColMap(existingRows[0]);
+      const newCol = buildLookerColMap(newRows[0]);
+      const vehicleMap = new Map();
 
-    existingVehicles.forEach(r => {
-      vehicleMap.set(vehicleKey(r), trimRowColumns(r));
-    });
+      const validRow = (r, cIdx) => {
+        const car = (r?.[cIdx] || '').toString().trim();
+        return Boolean(car);
+      };
 
-    newVehicles.forEach(r => {
-      vehicleMap.set(vehicleKey(r), trimRowColumns(r));
-    });
+      existingRows.slice(1).filter(r => validRow(r, col.carCode)).forEach(r => {
+        const key = `${(r[col.branch] || '').toString().trim()}_${(r[col.carCode] || '').toString().trim()}`;
+        vehicleMap.set(key, r);
+      });
 
-    const combinedRows = [
-      ...headerRows,
-      ...Array.from(vehicleMap.values())
-    ];
+      newRows.slice(1).filter(r => validRow(r, newCol.carCode)).forEach(r => {
+        const key = `${(r[newCol.branch] || '').toString().trim()}_${(r[newCol.carCode] || '').toString().trim()}`;
+        vehicleMap.set(key, r);
+      });
 
-    const mergedCsv = Papa.unparse(combinedRows);
-    const branchesFound = Array.from(new Set(Array.from(vehicleMap.values()).map(r => (r[0] || '').toString().trim()).filter(Boolean)));
+      combinedRows = [existingRows[0], ...Array.from(vehicleMap.values())];
+      branchesFound = Array.from(new Set(Array.from(vehicleMap.values()).map(r => (r[col.branch] || '').toString().trim()).filter(Boolean)));
+    } else {
+      // Legacy 170-col merge
+      const rawHeaderRows = existingRows.length >= 3 ? existingRows.slice(0, 3) : newRows.slice(0, 3);
+      const headerRows = rawHeaderRows.map(r => trimRowColumns(r));
+
+      const existingVehicles = existingRows.slice(3).filter(r => {
+        const c = (r[3] || '').toString().trim();
+        return c && c.length >= 3 && !isNaN(parseInt(c[0]));
+      });
+
+      const newVehicles = newRows.slice(3).filter(r => {
+        const c = (r[3] || '').toString().trim();
+        return c && c.length >= 3 && !isNaN(parseInt(c[0]));
+      });
+
+      const vehicleKey = (r) => `${(r[0] || '').toString().trim()}_${(r[3] || '').toString().trim()}`;
+      const vehicleMap = new Map();
+
+      existingVehicles.forEach(r => {
+        vehicleMap.set(vehicleKey(r), trimRowColumns(r));
+      });
+
+      newVehicles.forEach(r => {
+        vehicleMap.set(vehicleKey(r), trimRowColumns(r));
+      });
+
+      combinedRows = [
+        ...headerRows,
+        ...Array.from(vehicleMap.values())
+      ];
+      branchesFound = Array.from(new Set(Array.from(vehicleMap.values()).map(r => (r[0] || '').toString().trim()).filter(Boolean)));
+    }
+
+    const mergedCsv = Papa.unparse(combinedRows, { newline: '\r\n' });
 
     const customMonths = getCustomMonths();
     const monthObj = {
       key: normKey,
       label: cleanLabel,
+      isLooker: existingIsLooker,
       csv: mergedCsv,
       uploadedAt: new Date().toISOString(),
       note: note || `รวมข้อมูลสาขา (${branchesFound.length} สาขา: ${branchesFound.join(', ')}) เรียบร้อย`
@@ -425,10 +508,27 @@ export function deleteCustomMonth(monthKey) {
  * Quick analysis of month CSV to return vehicle count, branches, and rewards
  */
 export function getMonthQuickStats(csvText) {
-  if (!csvText) return { count: 0, branches: [], totalReward: 0 };
+  if (!csvText || typeof csvText !== 'string') return { count: 0, branches: [], totalReward: 0 };
   try {
     const parsed = Papa.parse(csvText, { skipEmptyLines: false });
     const rows = parsed.data || [];
+
+    if (isLookerFormat(rows)) {
+      const col = buildLookerColMap(rows[0]);
+      const vehicles = rows.slice(1).filter(r => r && String(r[col.carCode] || '').trim().length > 0);
+      const branches = Array.from(new Set(vehicles.map(r => String(r[col.branch] || '').trim()).filter(Boolean))).sort();
+      let totalReward = 0;
+      vehicles.forEach(r => {
+        const val = parseFloat(String(r[col.totalReward] || '0').replace(/,/g, '').trim());
+        if (!isNaN(val)) totalReward += val;
+      });
+      return {
+        count: vehicles.length,
+        branches,
+        totalReward
+      };
+    }
+
     const vehicles = rows.slice(3).filter(r => {
       const c = (r[3] || '').toString().trim();
       return c && c.length >= 3 && !isNaN(parseInt(c[0]));
@@ -459,9 +559,12 @@ export function getMonthQuickStats(csvText) {
 
 export function getSelectedMonthKey() {
   const saved = localStorage.getItem(STORAGE_SELECTED_MONTH);
-  if (!saved || saved.startsWith('sprinkle_') || saved.includes('sync_time')) {
-    localStorage.setItem(STORAGE_SELECTED_MONTH, '2569-09');
-    return '2569-09';
+  const all = getAllMonths();
+  const validKeys = new Set(all.map(m => m.key));
+  if (!saved || saved.startsWith('sprinkle_') || saved.includes('sync_time') || (validKeys.size > 0 && !validKeys.has(saved))) {
+    const fallback = all[0]?.key || getLatestPreloadedKey();
+    localStorage.setItem(STORAGE_SELECTED_MONTH, fallback);
+    return fallback;
   }
   return saved;
 }

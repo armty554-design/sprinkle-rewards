@@ -18,21 +18,14 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
-  Plus
+  RotateCw
 } from 'lucide-react';
 import { 
   getAllMonths, 
-  getMonthData, 
-  saveNewMonth, 
-  mergeBranchIntoMonth, 
   deleteCustomMonth, 
   setSelectedMonthKey,
-  getMonthQuickStats,
-  formatThaiMonthLabel,
-  normalizeMonthKey
+  getMonthQuickStats
 } from '../utils/monthStorage';
-import { BANGBLEE_SAMPLE_SHEETS } from '../data/bangpleeSampleData';
-import { ALL_18_BRANCHES_MONTH_2569_09 } from '../data/all18BranchesData';
 
 export default function AdminDataManagerModal({
   isOpen,
@@ -42,9 +35,12 @@ export default function AdminDataManagerModal({
   onOpenUploadModal,
   currentUser,
   currentMonthData,
-  onDataChanged
+  onDataChanged,
+  onSyncAllFromLooker,
+  onResetToLooker,
+  isSyncingLooker
 }) {
-  const [activeTab, setActiveTab] = useState('months'); // 'months', 'sample_import', 'branch_stats'
+  const [activeTab, setActiveTab] = useState('months'); // 'months', 'branch_stats'
   const [notice, setNotice] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -58,7 +54,7 @@ export default function AdminDataManagerModal({
         stats
       };
     });
-  }, [isOpen, notice]);
+  }, [isOpen, notice, currentMonthKey]);
 
   const showNotice = (msg, type = 'success') => {
     setNotice({ msg, type });
@@ -67,80 +63,28 @@ export default function AdminDataManagerModal({
 
   if (!isOpen) return null;
 
-  // Handle 1-click merge of Bangplee sheet 2569-09 into current month or 2569-09
-  const handleImportSampleSheet = (sheetKey, targetMonthKey) => {
+  const busy = isProcessing || isSyncingLooker;
+
+  const handleSyncLookerClick = async () => {
+    if (!onSyncAllFromLooker) return;
     setIsProcessing(true);
     try {
-      const csv = BANGBLEE_SAMPLE_SHEETS[sheetKey];
-      if (!csv) {
-        showNotice(`ไม่พบข้อมูลของแผ่นงาน ${sheetKey}`, 'error');
-        setIsProcessing(false);
-        return;
-      }
-
-      const key = targetMonthKey || sheetKey;
-      const res = mergeBranchIntoMonth(
-        key,
-        csv,
-        formatThaiMonthLabel(key),
-        `นำเข้าจากไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (สาขาบางพลี)`
-      );
-
-      if (res) {
-        showNotice(`รวมข้อมูลสาขาบางพลีเข้าสู่เดือน ${formatThaiMonthLabel(key)} เรียบร้อยแล้ว!`, 'success');
-        if (onDataChanged) onDataChanged(normalizeMonthKey(key));
-      } else {
-        showNotice('ไม่สามารถรวมข้อมูลได้', 'error');
-      }
+      await onSyncAllFromLooker();
+      showNotice('ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Looker 69 เรียบร้อยแล้ว!', 'success');
     } catch (err) {
-      showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      showNotice('เกิดข้อผิดพลาดในการซิงค์: ' + err.message, 'error');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle batch import of all available sample sheets
-  const handleImportAllSampleSheets = () => {
-    if (!window.confirm('ต้องการนำเข้าข้อมูลตัวอย่างสาขาบางพลีทุกแผ่นงานเข้าสู่ระบบใช่หรือไม่?')) return;
+  const handleResetLookerClick = async () => {
+    if (!onResetToLooker) return;
+    if (!window.confirm('ต้องการล้างแคชข้อมูลที่เคยลงไว้ทั้งหมดในเครื่อง และรีเซ็ตเป็นข้อมูลชุด Looker 69 ใช่หรือไม่?')) return;
     setIsProcessing(true);
     try {
-      let count = 0;
-      Object.keys(BANGBLEE_SAMPLE_SHEETS).forEach(sheetKey => {
-        const csv = BANGBLEE_SAMPLE_SHEETS[sheetKey];
-        const normKey = normalizeMonthKey(sheetKey);
-        mergeBranchIntoMonth(
-          normKey,
-          csv,
-          formatThaiMonthLabel(normKey),
-          `นำเข้าจากไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (สาขาบางพลี)`
-        );
-        count++;
-      });
-      showNotice(`นำเข้าข้อมูลสาขาบางพลีทั้งหมด ${count} เดือนเรียบร้อยแล้ว!`, 'success');
-      if (onDataChanged) onDataChanged('2569-09');
-    } catch (err) {
-      showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Handle 1-click loading of all 18 operational delivery branches (382 vehicles)
-  const handleLoadAll18Branches = () => {
-    setIsProcessing(true);
-    try {
-      const res = mergeBranchIntoMonth(
-        '2569-09',
-        ALL_18_BRANCHES_MONTH_2569_09,
-        'กันยายน 2569',
-        'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน, รางวัลรวม 850,070 บาท)'
-      );
-      if (res) {
-        showNotice('โหลดข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน) เข้าสู่เดือนกันยายน 2569 เรียบร้อยแล้ว!', 'success');
-        if (onDataChanged) onDataChanged('2569-09');
-      } else {
-        showNotice('ไม่สามารถโหลดข้อมูล 18 สาขาได้', 'error');
-      }
+      await onResetToLooker();
+      showNotice('ล้างแคชข้อมูลเก่าและรีเซ็ตเป็น Looker 69 เรียบร้อยแล้ว', 'info');
     } catch (err) {
       showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
     } finally {
@@ -154,7 +98,8 @@ export default function AdminDataManagerModal({
       if (ok) {
         showNotice(`ลบข้อมูลเดือน ${label || mKey} เรียบร้อยแล้ว`, 'info');
         if (mKey === currentMonthKey) {
-          onSelectMonth('2569-09');
+          const fallback = monthsList.find(x => x.key !== mKey)?.key || '2569-09';
+          onSelectMonth(fallback);
         }
         if (onDataChanged) onDataChanged();
       } else {
@@ -181,7 +126,7 @@ export default function AdminDataManagerModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                จัดการฐานข้อมูลรางวัลรายเดือน รวมข้อมูลข้ามสาขา และนำเข้าไฟล์ตัวอย่าง (10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx)
+                จัดการฐานข้อมูลจากแผ่นงาน "Looker ผลคะแนนแยกกลุ่มงาน69" ครบทั้ง 18 สาขา และอัปโหลดข้อมูลรายเดือน
               </p>
             </div>
           </div>
@@ -220,11 +165,19 @@ export default function AdminDataManagerModal({
             <div className="h-6 w-px bg-slate-200" />
             <div>
               <span className="text-slate-400 block text-[11px]">สาขาในเดือนปัจจุบัน</span>
-              <strong className="text-slate-800 font-extrabold text-sm">
-                {currentMonthData?.summary ? (
-                  Array.from(new Set(currentMonthData.vehicles.map(v => v.general.branch))).join(', ') || 'รามอินทรา'
-                ) : 'รามอินทรา'}
-              </strong>
+              {(() => {
+                const branches = currentMonthData?.vehicles
+                  ? Array.from(new Set(currentMonthData.vehicles.map(v => v.general.branch).filter(Boolean)))
+                  : [];
+                const display = branches.length > 3
+                  ? `ครบ ${branches.length} สาขา`
+                  : (branches.join(', ') || '-');
+                return (
+                  <strong title={branches.join(', ')} className="text-slate-800 font-extrabold text-sm">
+                    {display}
+                  </strong>
+                );
+              })()}
             </div>
           </div>
 
@@ -237,7 +190,7 @@ export default function AdminDataManagerModal({
               className="px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>+ นำเข้าเดือนเก่าๆ หรือเดือนใหม่</span>
+              <span>+ นำเข้าไฟล์ / Google Sheet</span>
             </button>
           </div>
         </div>
@@ -254,18 +207,6 @@ export default function AdminDataManagerModal({
           >
             <Calendar className="w-4 h-4" />
             <span>รายการเดือนในระบบ ({monthsList.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('sample_import')}
-            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'sample_import'
-                ? 'border-sky-500 text-sky-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>นำเข้าตัวอย่างประวัติย้อนหลัง (บางพลี)</span>
           </button>
 
           <button
@@ -288,32 +229,43 @@ export default function AdminDataManagerModal({
           {activeTab === 'months' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>คลิก "เลือกดูเดือนนี้" เพื่อเปลี่ยนข้อมูลหน้าหลัก หรือคลิก "+ รวมข้อมูลสาขา" เพื่อเพิ่มสาขาเข้าเดือนเดิม</span>
+                <span>คลิก "เลือกดูเดือนนี้" เพื่อสลับข้อมูล หรือกดซิงค์จาก Looker 69 เพื่อดึงข้อมูลทุกเดือนทุกสาขาล่าสุด</span>
                 <span className="font-semibold text-slate-700">ทั้งหมด {monthsList.length} เดือน</span>
               </div>
 
-              {/* Quick 18 Branches Preload Banner */}
+              {/* Looker 69 Live Sync & Reset Banner */}
               <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-700 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    <h4 className="font-bold text-sm">ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)</h4>
+                    <h4 className="font-bold text-sm">ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Looker 69 (Google Sheet)</h4>
                     <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">
-                      พร้อมใช้งาน
+                      49 คอลัมน์ • 18 สาขา
                     </span>
                   </div>
                   <p className="text-xs text-sky-100 leading-relaxed">
-                    เดือนกันยายน 2569 รวมข้อมูลครบทั้ง 18 สาขา (บางพลี, สุขุมวิท 50, วังน้อย, รามอินทรา, ราษฎร์บูรณะ, สำโรง, กรุงเทพกรีฑา, บางบัวทอง, ประชาชื่น, พระราม 2, ปทุมธานี, บุคคโล, พระราม 3, ปากเกร็ด, กิ่งแก้ว, พุทธมณฑลสาย 1, ประเวศ, ดอนเมือง) รวม 382 คัน รางวัล ฿850,070
+                    ดึงข้อมูลล่าสุดจากแผ่นงาน <strong>"Looker ผลคะแนนแยกกลุ่มงาน69"</strong> ครบทั้ง 18 สาขาปฏิบัติการ และอัปเดตทุกเดือน (`2569-01` – ปัจจุบัน) พร้อมกันทันที (กันยายน 2569: 382 คัน, รางวัลรวม ฿846,180)
                   </p>
                 </div>
-                <button
-                  onClick={handleLoadAll18Branches}
-                  disabled={isProcessing}
-                  className="px-4 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  <span>โหลดข้อมูล 18 สาขาทันที</span>
-                </button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleSyncLookerClick}
+                    disabled={busy}
+                    className="px-4 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RotateCw className={`w-4 h-4 text-sky-600 ${busy ? 'animate-spin' : ''}`} />
+                    <span>{busy ? 'กำลังซิงค์...' : 'ซิงค์ทุกเดือนจาก Looker'}</span>
+                  </button>
+                  <button
+                    onClick={handleResetLookerClick}
+                    disabled={busy}
+                    title="ล้างข้อมูลแคชที่เคยบันทึกค้างและรีเซ็ตเป็นชุด Looker 69"
+                    className="px-3 py-2.5 bg-white/15 hover:bg-white/25 text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>ล้างแคชรีเซ็ต</span>
+                  </button>
+                </div>
               </div>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white">
@@ -395,8 +347,8 @@ export default function AdminDataManagerModal({
                           <span className="hidden sm:inline">+ รวมสาขา</span>
                         </button>
 
-                        {/* Delete custom month */}
-                        {m.key.startsWith('month_') || (m.uploadedAt && !m.gid) ? (
+                        {/* Delete custom uploaded month */}
+                        {m.key.startsWith('month_') || (m.uploadedAt && m.source !== 'looker69') ? (
                           <button
                             onClick={() => handleDeleteMonth(m.key, m.label)}
                             title="ลบเดือนนี้"
@@ -413,102 +365,7 @@ export default function AdminDataManagerModal({
             </div>
           )}
 
-          {/* TAB 2: SAMPLE FILE IMPORT (10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx) */}
-          {activeTab === 'sample_import' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex items-start gap-3">
-                <FileSpreadsheet className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-950 space-y-1">
-                  <strong className="block text-sm font-bold text-amber-900">
-                    ไฟล์ตัวอย่าง: 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx (สาขาบางพลี)
-                  </strong>
-                  <p className="text-amber-800 leading-relaxed">
-                    ระบบได้เตรียมข้อมูลจริงจากไฟล์ตัวอย่าง <code>10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx</code> สาขาบางพลี 
-                    ท่านสามารถกดปุ่ม <strong>"รวมข้อมูลสาขาบางพลีเข้าสู่เดือน 2569-09"</strong> เพื่อนำรถทั้ง 25 คันของสาขาบางพลีเข้าสู่ระบบทันที 
-                    ซึ่งจะทำให้เดือน 2569-09 มีข้อมูลทั้งสาขารามอินทรา (24 คัน) และสาขาบางพลี (25 คัน) พร้อมตัวกรองสาขาในแถบค้นหา
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick 1-Click Action */}
-              <div className="p-5 bg-gradient-to-r from-sky-500 to-indigo-600 rounded-2xl text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>คำแนะนำด่วน (One-Click Merge)</span>
-                  </span>
-                  <h3 className="font-extrabold text-base text-white">
-                    รวมข้อมูลสาขาบางพลี (25 คัน) เข้ากับเดือน 2569-09
-                  </h3>
-                  <p className="text-xs text-sky-100 max-w-xl">
-                    จะทำการรวมรถเบอร์ 10101, 10S01, 10S02 ฯลฯ ของสาขาบางพลี เข้าสู่เดือนปัจจุบันทันที และเปิดตัวกรองสาขาในหน้าหลัก
-                  </p>
-                </div>
-
-                <button
-                  disabled={isProcessing}
-                  onClick={() => handleImportSampleSheet('2569-09', '2569-09')}
-                  className="px-5 py-2.5 rounded-xl bg-white text-sky-900 hover:bg-sky-50 font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition-all shrink-0 cursor-pointer disabled:opacity-50"
-                >
-                  <GitMerge className="w-4 h-4 text-sky-600" />
-                  <span>{isProcessing ? 'กำลังประมวลผล...' : 'รวมข้อมูลบางพลีทันที'}</span>
-                </button>
-              </div>
-
-              {/* Available Sheets in File */}
-              <div className="space-y-2">
-                <h4 className="font-bold text-xs text-slate-800">
-                  รายการแผ่นงานในไฟล์ 10_ผลคะแนนรางวัลมาตรฐานจัดส่ง.xlsx ที่พร้อมนำเข้า:
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    { key: '2569-09', sheetKey: '2569-09', title: 'กันยายน 2569 (2569-09)', cars: 25, branch: 'บางพลี' },
-                    { key: '2569-08', sheetKey: '2569-08', title: 'สิงหาคม 2569 (2569-08)', cars: 25, branch: 'บางพลี' },
-                    { key: '2569-07', sheetKey: '2569-07', title: 'กรกฎาคม 2569 (2569-07)', cars: 25, branch: 'บางพลี' },
-                    { key: '2567-10', sheetKey: '10-2567', title: 'ตุลาคม 2567 (2567-10)', cars: 24, branch: 'บางพลี' }
-                  ].map(item => (
-                    <div 
-                      key={item.key}
-                      className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between hover:border-sky-300 transition-colors"
-                    >
-                      <div>
-                        <strong className="text-xs font-bold text-slate-900 block">{item.title}</strong>
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                          <span className="font-semibold text-sky-700 bg-sky-50 px-1 rounded">สาขา {item.branch}</span>
-                          <span>•</span>
-                          <span>{item.cars} คัน</span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleImportSampleSheet(item.sheetKey, item.key)}
-                        disabled={isProcessing}
-                        className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>นำเข้าแผ่นนี้</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Batch Import Button */}
-              <div className="pt-2 flex justify-end">
-                <button
-                  disabled={isProcessing}
-                  onClick={handleImportAllSampleSheets}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Layers className="w-3.5 h-3.5 text-sky-400" />
-                  <span>นำเข้าทุกแผ่นงานเข้าสู่ระบบ</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: BRANCH STATS & BREAKDOWN */}
+          {/* TAB 2: BRANCH STATS & BREAKDOWN */}
           {activeTab === 'branch_stats' && (
             <div className="space-y-4">
               <div className="text-xs text-slate-600">

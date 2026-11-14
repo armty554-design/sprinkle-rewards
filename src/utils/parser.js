@@ -1,4 +1,20 @@
 import Papa from 'papaparse';
+import {
+  isLookerFormat,
+  parseLookerCSVData,
+  splitLookerCsvByMonth,
+  LOOKER_SPREADSHEET_ID,
+  LOOKER_GID,
+  LOOKER_CSV_URL
+} from './lookerParser.js';
+
+export {
+  isLookerFormat,
+  splitLookerCsvByMonth,
+  LOOKER_SPREADSHEET_ID,
+  LOOKER_GID,
+  LOOKER_CSV_URL
+};
 
 export function cleanNum(val) {
   if (val === undefined || val === null || val === '') return 0;
@@ -234,6 +250,9 @@ export function parseCSVData(csvText) {
   });
 
   const rows = result.data;
+  if (isLookerFormat(rows)) {
+    return parseLookerCSVData(rows, generateDefects);
+  }
   if (!rows || rows.length < 4) {
     return {
       meta: {
@@ -320,11 +339,16 @@ export function parseCSVData(csvText) {
   });
 
   const topDefects = Object.values(defectCounts).sort((a, b) => b.count - a.count);
+  const branchSet = Array.from(new Set(vehicles.map(v => v.general.branch).filter(Boolean)));
+  const resolvedBranch = branchSet.length > 1
+    ? `ทุกสาขา (${branchSet.length} สาขา)`
+    : (branchName || branchSet[0] || 'รามอินทรา');
 
   return {
     meta: {
       title,
-      branch: branchName || 'รามอินทรา',
+      branch: resolvedBranch,
+      branches: branchSet,
       month: monthName || 'รายงานประจำเดือน',
       parsedAt: new Date().toISOString()
     },
@@ -1100,6 +1124,19 @@ function parseDriverRow(r, rowIndex, colMap) {
   };
 }
 
+function appendPendingDeductionDefect(defects, totals) {
+  if (totals.pendingDeduction > 0) {
+    defects.push({
+      category: 'เงินรางวัล',
+      code: 'DED',
+      severity: 'danger',
+      title: 'มียอดค้างรอหักในเดือนถัดไป',
+      detail: `ยอดหักติดลบสะสมในเดือนนี้ไม่พอหัก จึงมียอดรอหักเดือนถัดไป ${totals.pendingDeduction.toLocaleString()} บาท`,
+      impact: `รอหักเดือนถัดไป ${totals.pendingDeduction.toLocaleString()} บาท`
+    });
+  }
+}
+
 function generateDefects(gen, totals, g1, g2, g3, g4, g5, isLegacyEra = false) {
   const defects = [];
 
@@ -1124,6 +1161,29 @@ function generateDefects(gen, totals, g1, g2, g3, g4, g5, isLegacyEra = false) {
       detail: gen.remark,
       impact: '-'
     });
+  }
+
+  if (gen.isSummaryOnly) {
+    const groupChecks = [
+      { code: 'G1', category: 'กลุ่ม 1 จัดส่ง', title: 'กลุ่มงานจัดส่งตกเกณฑ์มาตรฐาน (< 85%)', g: g1, num: 1 },
+      { code: 'G2', category: 'กลุ่ม 2 บริการ', title: 'กลุ่มงานบริการตกเกณฑ์มาตรฐาน (< 85%)', g: g2, num: 2 },
+      { code: 'G3', category: 'กลุ่ม 3 เอกสารและผลิตภัณฑ์', title: 'กลุ่มงานเอกสารและผลิตภัณฑ์ตกเกณฑ์มาตรฐาน (< 85%)', g: g3, num: 3 },
+      { code: 'G4', category: 'กลุ่ม 4 ภาพลักษณ์แบรนด์', title: 'กลุ่มงานภาพลักษณ์แบรนด์ตกเกณฑ์มาตรฐาน (< 85%)', g: g4, num: 4 }
+    ];
+    groupChecks.forEach(({ code, category, title, g, num }) => {
+      if (String(g?.level || '').includes('<')) {
+        defects.push({
+          category,
+          code,
+          severity: 'danger',
+          title,
+          detail: `คะแนนรวมกลุ่ม ${num} ได้ ${g.score} คะแนน (${g.percent}%) ต่ำกว่าเกณฑ์มาตรฐาน 85%`,
+          impact: `เงินรางวัลกลุ่ม ${num}: ${g.reward} บาท`
+        });
+      }
+    });
+    appendPendingDeductionDefect(defects, totals);
+    return defects;
   }
 
   // Group 1 level
@@ -1518,16 +1578,7 @@ function generateDefects(gen, totals, g1, g2, g3, g4, g5, isLegacyEra = false) {
   }
 
   // ยอดรอหักเดือนถัดไป
-  if (totals.pendingDeduction > 0) {
-    defects.push({
-      category: 'เงินรางวัล',
-      code: 'DED',
-      severity: 'danger',
-      title: 'มียอดค้างรอหักในเดือนถัดไป',
-      detail: `ยอดหักติดลบสะสมในเดือนนี้ไม่พอหัก จึงมียอดรอหักเดือนถัดไป ${totals.pendingDeduction.toLocaleString()} บาท`,
-      impact: `รอหักเดือนถัดไป ${totals.pendingDeduction.toLocaleString()} บาท`
-    });
-  }
+  appendPendingDeductionDefect(defects, totals);
 
   return defects;
 }

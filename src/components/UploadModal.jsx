@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
 export default function UploadModal({ onClose, onDataLoaded, defaultSheetUrl }) {
-  const [sheetUrl, setSheetUrl] = useState(defaultSheetUrl || 'https://docs.google.com/spreadsheets/d/1iRRkVS5mc9BfuKvEIsWN6l946zE7HKMEmmun0iIdXFs/edit?gid=1535795255#gid=1535795255');
+  const [sheetUrl, setSheetUrl] = useState(defaultSheetUrl || 'https://docs.google.com/spreadsheets/d/1GdiQEkdAUT8JLMQEnaFOlV6o5goWm2j_v1HXney7hZc/edit?gid=2115397650#gid=2115397650');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');

@@ -68,7 +68,12 @@ export default function MobileVehicleView({
             <h2 className="font-bold text-sm text-slate-900 leading-tight">
               {general.fullName}
             </h2>
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
+            <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1 mt-0.5">
+              {general.branch && (
+                <span className="font-semibold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                  {general.branch}
+                </span>
+              )}
               <span>รหัส {general.empId}</span>
               <span>•</span>
               <span>{general.zone}</span>
@@ -124,7 +129,7 @@ export default function MobileVehicleView({
             >
               {allVehicles.map(v => (
                 <option key={v.id} value={v.id}>
-                  {v.general.carCode} - {v.general.fullName} {v.general.groupNumber ? `(กลุ่ม ${v.general.groupNumber})` : ''}
+                  {v.general.branch ? `[${v.general.branch}] ` : ''}{v.general.carCode} - {v.general.fullName} {v.general.groupNumber ? `(กลุ่ม ${v.general.groupNumber})` : ''}
                 </option>
               ))}
             </select>
@@ -398,6 +403,7 @@ export default function MobileVehicleView({
                             </div>
                             <div className="text-[11px] text-slate-400 mt-0.5">
                               เกณฑ์: {item.target} • ผลงาน: <strong className="text-slate-700">{item.result}</strong>
+                              {item.percent !== null && item.percent !== undefined ? ` (${item.percent}%)` : ''}
                             </div>
                           </div>
 
@@ -523,11 +529,27 @@ export default function MobileVehicleView({
 }
 
 function renderMobileScoreBadge(item) {
-  const { score, fullScore, status } = item;
+  const { score, fullScore, status, isGroupSummary } = item;
 
   if (score < 0) {
     return (
       <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+        {score}
+      </span>
+    );
+  }
+
+  if (isGroupSummary || fullScore === null) {
+    const badgeClass =
+      status === 'pass'
+        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+        : status === 'warning'
+        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+        : status === 'fail'
+        ? 'bg-rose-100 text-rose-700 border border-rose-200'
+        : 'bg-slate-100 text-slate-700 border border-slate-200';
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${badgeClass}`}>
         {score}
       </span>
     );

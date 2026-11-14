@@ -18,6 +18,7 @@ import PercentM79View from './components/PercentM79View';
 import LookerScoresView from './components/LookerScoresView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
+import { LOOKER_CSV_URL } from './utils/lookerParser';
 import { useIsMobile } from './hooks/useIsMobile';
 import { parseCSVData } from './utils/parser';
 import { 
@@ -25,6 +26,8 @@ import {
   getMonthData, 
   saveNewMonth, 
   mergeBranchIntoMonth,
+  syncLookerMonthsToStorage,
+  clearAndResetToLookerMonths,
   getSelectedMonthKey, 
   setSelectedMonthKey,
   initStorage
@@ -139,17 +142,20 @@ export default function App() {
     return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
   }, []);
 
-  // Initialize persistent storage (IndexedDB + seed all 18 branches)
+  // Initialize persistent storage (IndexedDB + clean Looker 69 reset if needed)
   useEffect(() => {
     initStorage().then(() => {
       setAllMonthsList(getAllMonths());
+      setSelectedMonthState(getSelectedMonthKey());
     });
   }, []);
 
   // Sync months on custom months update
   useEffect(() => {
     const handleMonthsUpdate = () => {
-      setAllMonthsList(getAllMonths());
+      const updated = getAllMonths();
+      setAllMonthsList(updated);
+      setSelectedMonthState(getSelectedMonthKey());
     };
     window.addEventListener('sprinkle_months_updated', handleMonthsUpdate);
     return () => window.removeEventListener('sprinkle_months_updated', handleMonthsUpdate);
@@ -179,8 +185,21 @@ export default function App() {
     showNotification(`สลับข้อมูลเป็นเดือน: ${getMonthData(key)?.label || key}`, 'info');
   };
 
-  // New month added handler supporting merge and replace modes
-  const handleMonthAdded = (key, label, csvText, note, importMode = 'merge') => {
+  // New month added handler supporting merge, replace, and multi-month Looker CSV modes
+  const handleMonthAdded = async (key, label, csvText, note, importMode = 'merge') => {
+    if (importMode === 'looker_multi') {
+      const { syncedKeys } = await syncLookerMonthsToStorage(csvText);
+      if (syncedKeys.length > 0) {
+        setAllMonthsList(getAllMonths());
+        const latest = syncedKeys[syncedKeys.length - 1];
+        setSelectedMonthState(latest);
+        showNotification(`ซิงค์ข้อมูล Looker ครบ ${syncedKeys.length} เดือน (${syncedKeys[0]} – ${latest}) เรียบร้อยแล้ว`, 'success');
+      } else {
+        showNotification('ไม่พบข้อมูลเดือนที่นำเข้าได้ในไฟล์ Looker', 'error');
+      }
+      return;
+    }
+
     let saved = null;
     if (importMode === 'merge') {
       saved = mergeBranchIntoMonth(key, csvText, label, note);
@@ -191,31 +210,43 @@ export default function App() {
     if (saved) {
       const updatedList = getAllMonths();
       setAllMonthsList(updatedList);
-      setSelectedMonthState(key);
-      showNotification(`นำเข้าข้อมูลเดือน ${label} เรียบร้อยแล้ว`, 'success');
+      setSelectedMonthState(saved.key || key);
+      showNotification(`นำเข้าข้อมูลเดือน ${saved.label || label} เรียบร้อยแล้ว`, 'success');
+    } else {
+      showNotification('ไม่สามารถรวมข้อมูลรูปแบบต่างกันได้ กรุณาเลือกนำเข้าแบบแทนที่ทั้งเดือน', 'error');
     }
   };
 
-  // Sync current month from Google Sheet if it has a gid
+  // Sync all months & all 18 branches live from Looker 69 Google Sheet
   const handleRefreshCurrentMonth = async () => {
-    if (!currentMonthObj?.gid) {
-      showNotification('เดือนนี้เป็นไฟล์ที่อัปโหลดโดยผู้ใช้ ไม่ได้เชื่อมกับ Google Sheet', 'info');
-      return;
-    }
     setIsRefreshing(true);
     try {
-      const sheetId = '1iRRkVS5mc9BfuKvEIsWN6l946zE7HKMEmmun0iIdXFs';
-      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${currentMonthObj.gid}`;
-      const res = await fetch(exportUrl);
+      const res = await fetch(`${LOOKER_CSV_URL}&_t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
 
-      saveNewMonth(currentMonthObj.key, currentMonthObj.label, text, 'ซิงค์จาก Google Sheet');
+      const { syncedKeys } = await syncLookerMonthsToStorage(text);
+      if (syncedKeys.length === 0) {
+        throw new Error('ไม่พบข้อมูลเดือนในแผ่นงาน Looker ผลคะแนนแยกกลุ่มงาน69');
+      }
+
       setAllMonthsList(getAllMonths());
-      setSelectedMonthState(currentMonthObj.key);
-      showNotification(`ซิงค์ข้อมูลล่าสุดเดือน ${currentMonthObj.label} สำเร็จแล้ว!`, 'success');
+      setSelectedMonthState(getSelectedMonthKey());
+      showNotification(`ซิงค์ข้อมูลล่าสุดครบ ${syncedKeys.length} เดือน จาก Looker 69 สำเร็จแล้ว!`, 'success');
     } catch (err) {
-      showNotification('ไม่สามารถซิงค์ได้: ' + err.message, 'error');
+      showNotification('ไม่สามารถซิงค์จาก Looker 69 ได้: ' + err.message, 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleResetToLooker = async () => {
+    setIsRefreshing(true);
+    try {
+      const latestKey = await clearAndResetToLookerMonths({ dispatch: true });
+      setAllMonthsList(getAllMonths());
+      setSelectedMonthState(latestKey);
+      showNotification('ล้างแคชข้อมูลเก่าทั้งหมด และรีเซ็ตเป็นชุดข้อมูล Looker 69 เรียบร้อยแล้ว', 'success');
     } finally {
       setIsRefreshing(false);
     }
@@ -371,6 +402,9 @@ export default function App() {
                 setSelectedMonthKey(newKey);
               }
             }}
+            onSyncAllFromLooker={handleRefreshCurrentMonth}
+            onResetToLooker={handleResetToLooker}
+            isSyncingLooker={isRefreshing}
           />
         )}
       </>
@@ -677,6 +711,9 @@ export default function App() {
               setSelectedMonthKey(newKey);
             }
           }}
+          onSyncAllFromLooker={handleRefreshCurrentMonth}
+          onResetToLooker={handleResetToLooker}
+          isSyncingLooker={isRefreshing}
         />
       )}
 

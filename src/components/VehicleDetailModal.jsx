@@ -390,19 +390,46 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
               <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
                 <h4 className="font-bold text-slate-900 text-sm mb-3">กลุ่ม 5: พิเศษ / หนังสือเตือน / อื่นๆ</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <span className="text-xs text-slate-500 font-medium">5.1 หาสมาชิกใหม่</span>
-                    <div className="text-base font-bold text-slate-800 mt-0.5">
-                      {groups.group5.items[0].result} (คะแนน: {groups.group5.items[0].score})
-                    </div>
-                  </div>
+                  {groups.group5?.items?.length >= 2 ? (
+                    <>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-xs text-slate-500 font-medium">5.1 หาสมาชิกใหม่</span>
+                        <div className="text-base font-bold text-slate-800 mt-0.5">
+                          {groups.group5.items[0].result} (คะแนน: {groups.group5.items[0].score})
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <span className="text-xs text-slate-500 font-medium">5.2 หนังสือเตือน</span>
-                    <div className="text-base font-bold text-slate-800 mt-0.5">
-                      {groups.group5.items[1].result} (หักคะแนน: {groups.group5.items[1].score})
-                    </div>
-                  </div>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-xs text-slate-500 font-medium">5.2 หนังสือเตือน</span>
+                        <div className="text-base font-bold text-slate-800 mt-0.5">
+                          {groups.group5.items[1].result} (หักคะแนน: {groups.group5.items[1].score})
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-3 bg-sky-50/70 rounded-lg border border-sky-100 sm:col-span-2">
+                        <span className="text-xs text-sky-800 font-bold block">ข้อมูลรูปแบบสรุปรายกลุ่ม (Looker 69)</span>
+                        <p className="text-xs text-sky-700 mt-0.5">
+                          ข้อมูลจาก Looker แสดงผลสรุปรวมตามกลุ่มงาน 1–4 ไม่มีรายละเอียดรายข้อย่อย (5.1 / 5.2)
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-xs text-slate-500 font-medium">Zone / อัตรา Baht/Bottle</span>
+                        <div className="text-base font-bold text-slate-800 mt-0.5">
+                          {general.zoneCode || '-'} • {Number(general.incentivePerBottle || 0).toFixed(2)} ฿/ถัง
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-xs text-slate-500 font-medium">เงินพิเศษ / กรณีข้อ 3.6</span>
+                        <div className="text-base font-bold text-slate-800 mt-0.5">
+                          ฿{Number(totals.specialBonus || 0).toLocaleString()} / ฿{Number(totals.unhandledDeduction36 || 0).toLocaleString()}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
