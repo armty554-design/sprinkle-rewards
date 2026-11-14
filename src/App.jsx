@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import DashboardStats from './components/DashboardStats';
 import FilterBar from './components/FilterBar';
@@ -14,7 +14,6 @@ import BranchAnalytics from './components/BranchAnalytics';
 import ExecutiveComparisonView from './components/ExecutiveComparisonView';
 import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
 import AnnualExcellenceView from './components/AnnualExcellenceView';
-import PercentM79View from './components/PercentM79View';
 import LookerScoresView from './components/LookerScoresView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
@@ -36,28 +35,76 @@ import {
   initStorage
 } from './utils/monthStorage';
 import { getPendingUsersCount } from './utils/userManagement';
-import { AlertCircle, CheckCircle2, LogOut, User, ShieldCheck, Database, Building2 } from 'lucide-react';
+import {
+  isSelfOnlyRole,
+  isManagementRole,
+  isValidSessionUser,
+  filterVehiclesForUser,
+  canAccessTab,
+} from './utils/authHelpers';
+import {
+  parseUrlState,
+  sanitizeUrlStateForUser,
+  buildCanonicalUrl,
+} from './utils/urlState';
+import {
+  AlertCircle,
+  CheckCircle2,
+  LogOut,
+  User,
+  ShieldCheck,
+  Database,
+  Settings,
+  ClipboardCheck,
+  ChevronDown,
+  ArrowLeft,
+  Link2,
+  Check
+} from 'lucide-react';
 
 const STORAGE_AUTH_USER = 'sprinkle_auth_user';
 
 export default function App() {
   const isMobile = useIsMobile(768);
 
-  // Authentication State
+  // Authentication State (invalidate legacy or malformed sessions cleanly)
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_AUTH_USER);
-      return saved ? JSON.parse(saved) : null;
-    } catch (err) {
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (!isValidSessionUser(parsed)) {
+        localStorage.removeItem(STORAGE_AUTH_USER);
+        return null;
+      }
+      return parsed;
+    } catch {
       return null;
     }
   });
 
-  // Current selected month (with auto-healing against non-month keys)
+  const isSelfOnly = isSelfOnlyRole(currentUser);
+  const canManage = isManagementRole(currentUser);
+
+  // Initial Deep-Link URL parsing (preserved across LoginScreen until authenticated)
+  const initialUrl = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { tab: null, month: null, car: null, branch: null, subtab: null, mtab: null, hasParams: false };
+    }
+    return parseUrlState(window.location.search, window.location.pathname);
+  }, []);
+  const hasUrlMonthOverrideRef = useRef(Boolean(initialUrl.month));
+  const historyPushPendingRef = useRef(false);
+
+  // Current selected month (URL ?month= takes precedence over localStorage fallback)
   const [selectedMonthKey, setSelectedMonthState] = useState(() => {
+    const months = getAllMonths();
+    if (initialUrl.month && months.some((m) => m.key === initialUrl.month)) {
+      return initialUrl.month;
+    }
     const k = getSelectedMonthKey();
     if (!k || String(k).startsWith('sprinkle_') || String(k).includes('sync_time')) {
-      const fallbackKey = getAllMonths()[0]?.key || '2569-09';
+      const fallbackKey = months[0]?.key || '2569-09';
       setSelectedMonthKey(fallbackKey);
       return fallbackKey;
     }
@@ -66,9 +113,15 @@ export default function App() {
   const [allMonthsList, setAllMonthsList] = useState(() => getAllMonths());
   const [lastSyncTime, setLastSyncTime] = useState(() => getLastAutoSyncTime());
 
-  // Active view tab (Desktop)
-  const [activeTab, setActiveTab] = useState('single'); // 'single', 'vehicles', 'analytics'
+  // Active view tab & deep-linked sub-states
+  const [activeTab, setActiveTab] = useState(() => initialUrl.tab || 'single'); // 'single', 'vehicles', 'analytics', ...
   const [viewMode, setViewMode] = useState('grid'); // 'grid', 'table'
+  const [execSubTab, setExecSubTab] = useState(() => initialUrl.subtab || 'branches');
+  const [mobileTab, setMobileTab] = useState(() => {
+    if (initialUrl.tab === 'executive') return 'executive';
+    if (initialUrl.tab === 'audit') return 'audit';
+    return initialUrl.mtab || 'summary';
+  });
 
   // Current Month Data (guaranteed to always return valid object with csv)
   const currentMonthObj = useMemo(() => {
@@ -93,47 +146,74 @@ export default function App() {
     }
   }, [currentMonthObj, allMonthsList]);
 
-  // Selected vehicle for Single Vehicle View
-  const [singleViewCarId, setSingleViewCarId] = useState(() => {
-    return data.vehicles[0]?.id || null;
-  });
+  // Scoped vehicles strictly isolated by user role (self-only users never receive other employees' vehicles)
+  const visibleVehicles = useMemo(() => {
+    return filterVehiclesForUser(data.vehicles, currentUser);
+  }, [data.vehicles, currentUser]);
 
-  // When driver logs in or data changes, select their vehicle
+  // Selected vehicle for Single Vehicle View (carCode kept stable across month switches & URL deep links)
+  const [selectedCarCode, setSelectedCarCode] = useState(() => initialUrl.car || null);
+  const [singleViewCarId, setSingleViewCarId] = useState(null);
+
+  // Enforce tab guard if user role restricts navigation
   useEffect(() => {
-    if (currentUser?.role === 'driver') {
-      const myVehicle = data.vehicles.find(v => 
-        v.general.empId === currentUser.empId || 
-        v.general.carCode === currentUser.carCode
-      );
-      if (myVehicle) {
-        setSingleViewCarId(myVehicle.id);
-        return;
-      }
+    if (currentUser && !canAccessTab(currentUser, activeTab)) {
+      setActiveTab('single');
     }
-    if (!singleViewCarId && data.vehicles.length > 0) {
-      setSingleViewCarId(data.vehicles[0].id);
-    }
-  }, [data, currentUser]);
+  }, [currentUser, activeTab]);
 
-  // Current selected vehicle object
+  // Current selected vehicle object (strictly from scoped visibleVehicles; resolves selectedCarCode synchronously)
   const currentSelectedVehicle = useMemo(() => {
-    return data.vehicles.find(v => v.id === singleViewCarId) || data.vehicles[0];
-  }, [data, singleViewCarId]);
+    if (visibleVehicles.length === 0) return null;
+    if (selectedCarCode) {
+      const byCode = visibleVehicles.find(
+        (v) =>
+          String(v?.general?.carCode || '').trim() === selectedCarCode ||
+          v.id === selectedCarCode
+      );
+      if (byCode) return byCode;
+    }
+    if (singleViewCarId) {
+      const byId = visibleVehicles.find((v) => v.id === singleViewCarId);
+      if (byId) return byId;
+    }
+    return visibleVehicles[0] || null;
+  }, [visibleVehicles, selectedCarCode, singleViewCarId]);
 
-  // Filters for All Vehicles Overview
+  // Keep selected vehicle ID & carCode strictly aligned with user's scoped visibleVehicles
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!currentSelectedVehicle) {
+      if (singleViewCarId !== null) setSingleViewCarId(null);
+      return;
+    }
+    if (singleViewCarId !== currentSelectedVehicle.id) {
+      setSingleViewCarId(currentSelectedVehicle.id);
+    }
+    const resolvedCarCode = String(currentSelectedVehicle?.general?.carCode || '').trim() || null;
+    if (isSelfOnly && selectedCarCode && selectedCarCode !== resolvedCarCode) {
+      setSelectedCarCode(resolvedCarCode);
+    }
+  }, [currentUser, isSelfOnly, currentSelectedVehicle, singleViewCarId, selectedCarCode]);
+
+  const safeActiveTab = canAccessTab(currentUser, activeTab) ? activeTab : 'single';
+
+  // Filters for All Vehicles Overview / Shared Branch filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState(() => initialUrl.branch || 'all');
   const [selectedZone, setSelectedZone] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [sortBy, setSortBy] = useState('reward_desc');
+  const [linkCopied, setLinkCopied] = useState(false);
 
-  // Modals
+  // Modals & Settings Popover
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [printVehicle, setPrintVehicle] = useState(null);
   const [isUploadNewMonthOpen, setIsUploadNewMonthOpen] = useState(false);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isDataManagerOpen, setIsDataManagerOpen] = useState(false);
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [pendingUsersCount, setPendingUsersCount] = useState(() => getPendingUsersCount());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -147,13 +227,30 @@ export default function App() {
     return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
   }, []);
 
+  const showNotification = useCallback((msg, type = 'info') => {
+    setNotification({ msg, type });
+    setTimeout(() => {
+      setNotification(null);
+    }, 4000);
+  }, []);
+
   // Initialize persistent storage & automatically check Google Sheet for new/updated months (e.g. 10-2569..12-2569)
   useEffect(() => {
     let cancelled = false;
     initStorage().then(() => {
       if (cancelled) return;
-      setAllMonthsList(getAllMonths());
-      setSelectedMonthState(getSelectedMonthKey());
+      const list = getAllMonths();
+      setAllMonthsList(list);
+      if (
+        hasUrlMonthOverrideRef.current &&
+        initialUrl.month &&
+        list.some((m) => m.key === initialUrl.month)
+      ) {
+        setSelectedMonthState(initialUrl.month);
+        setSelectedMonthKey(initialUrl.month);
+      } else {
+        setSelectedMonthState(getSelectedMonthKey());
+      }
       runMasterSync({ silent: true, force: false });
     });
 
@@ -170,38 +267,257 @@ export default function App() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, []);
+  }, [initialUrl.month]);
 
   // Sync months on custom months update
   useEffect(() => {
     const handleMonthsUpdate = () => {
       const updated = getAllMonths();
       setAllMonthsList(updated);
-      setSelectedMonthState(getSelectedMonthKey());
+      if (!hasUrlMonthOverrideRef.current) {
+        setSelectedMonthState(getSelectedMonthKey());
+      }
     };
     window.addEventListener('sprinkle_months_updated', handleMonthsUpdate);
     return () => window.removeEventListener('sprinkle_months_updated', handleMonthsUpdate);
   }, []);
 
-  // Login handler
+  // Browser Back / Forward navigation sync
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = () => {
+      const parsed = parseUrlState(window.location.search, window.location.pathname);
+      historyPushPendingRef.current = false;
+      const monthKeys = getAllMonths().map((m) => m.key);
+      const sanitized = sanitizeUrlStateForUser(parsed, currentUser, {
+        visibleVehicles,
+        availableMonthKeys: monthKeys,
+      });
+      if (sanitized.month) {
+        hasUrlMonthOverrideRef.current = true;
+        setSelectedMonthState(sanitized.month);
+        setSelectedMonthKey(sanitized.month);
+      }
+      setActiveTab(sanitized.tab || 'single');
+      setSelectedCarCode(sanitized.car || null);
+      setSelectedBranch(sanitized.branch || 'all');
+      setExecSubTab(sanitized.subtab || 'branches');
+      setMobileTab(sanitized.mtab || 'summary');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentUser, visibleVehicles]);
+
+  // Keep browser address bar synchronized with authenticated + RBAC-sanitized state
+  useEffect(() => {
+    if (!currentUser || typeof window === 'undefined') return;
+    const monthKeys = allMonthsList.map((m) => m.key);
+    const currentRawState = {
+      tab: safeActiveTab,
+      month: selectedMonthKey,
+      car: currentSelectedVehicle?.general?.carCode || null,
+      branch: selectedBranch !== 'all' ? selectedBranch : null,
+      subtab: execSubTab,
+      mtab: mobileTab,
+    };
+    const sanitized = sanitizeUrlStateForUser(currentRawState, currentUser, {
+      visibleVehicles,
+      availableMonthKeys: monthKeys,
+    });
+    const targetUrl = buildCanonicalUrl(sanitized, currentUser);
+    const currentUrl = `${window.location.pathname}${window.location.search}` || '/';
+
+    if (currentUrl !== targetUrl) {
+      if (historyPushPendingRef.current) {
+        window.history.pushState(null, '', targetUrl);
+      } else {
+        window.history.replaceState(null, '', targetUrl);
+      }
+    }
+    historyPushPendingRef.current = false;
+  }, [
+    currentUser,
+    safeActiveTab,
+    selectedMonthKey,
+    currentSelectedVehicle,
+    selectedBranch,
+    execSubTab,
+    mobileTab,
+    allMonthsList,
+    visibleVehicles,
+  ]);
+
+  // Login handler (honors incoming deep-link URL after RBAC sanitization)
   const handleLogin = (user) => {
+    if (typeof window !== 'undefined') {
+      const parsed = parseUrlState(window.location.search, window.location.pathname);
+      const monthKeys = allMonthsList.map((m) => m.key);
+      if (parsed.month && monthKeys.includes(parsed.month)) {
+        hasUrlMonthOverrideRef.current = true;
+        setSelectedMonthState(parsed.month);
+        setSelectedMonthKey(parsed.month);
+      }
+      if (parsed.tab && canAccessTab(user, parsed.tab)) {
+        setActiveTab(parsed.tab);
+      } else {
+        setActiveTab('single');
+      }
+      if (isManagementRole(user)) {
+        if (parsed.car) setSelectedCarCode(parsed.car);
+        if (parsed.branch) setSelectedBranch(parsed.branch);
+        if (parsed.subtab) setExecSubTab(parsed.subtab);
+        if (parsed.tab === 'executive') setMobileTab('executive');
+        else if (parsed.tab === 'audit') setMobileTab('audit');
+        else if (parsed.mtab) setMobileTab(parsed.mtab);
+      } else {
+        setSelectedBranch('all');
+        setExecSubTab('branches');
+        setMobileTab(
+          parsed.mtab && parsed.mtab !== 'executive' && parsed.mtab !== 'audit'
+            ? parsed.mtab
+            : 'summary'
+        );
+      }
+    }
     setCurrentUser(user);
     localStorage.setItem(STORAGE_AUTH_USER, JSON.stringify(user));
     showNotification(`ยินดีต้อนรับ ${user.name}`, 'success');
   };
 
-  // Logout handler
+  // Logout handler (resets view state and clears URL params for next user)
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem(STORAGE_AUTH_USER);
+    setActiveTab('single');
+    setMobileTab('summary');
+    setSelectedBranch('all');
+    setExecSubTab('branches');
+    setSelectedCarCode(null);
+    setSingleViewCarId(null);
+    hasUrlMonthOverrideRef.current = false;
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/');
+    }
     showNotification('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
+
+  // Navigation helpers (push clean browser history entries)
+  const navigateTab = useCallback(
+    (tab) => {
+      if (!canAccessTab(currentUser, tab)) return;
+      historyPushPendingRef.current = true;
+      setActiveTab(tab);
+      if (tab === 'executive') setMobileTab('executive');
+      else if (tab === 'audit') setMobileTab('audit');
+      else if (tab === 'single' && (mobileTab === 'executive' || mobileTab === 'audit')) {
+        setMobileTab('summary');
+      }
+    },
+    [currentUser, mobileTab]
+  );
+
+  const handleSelectVehicle = useCallback(
+    (v, targetTab = null) => {
+      if (!v) return;
+      historyPushPendingRef.current = true;
+      setSingleViewCarId(v.id);
+      setSelectedCarCode(String(v?.general?.carCode || '').trim() || null);
+      if (targetTab && canAccessTab(currentUser, targetTab)) {
+        setActiveTab(targetTab);
+      }
+    },
+    [currentUser]
+  );
+
+  const handleSelectBranchState = useCallback(
+    (branchVal) => {
+      if (!isManagementRole(currentUser)) return;
+      historyPushPendingRef.current = true;
+      const norm =
+        !branchVal || String(branchVal).toLowerCase() === 'all' ? 'all' : branchVal;
+      setSelectedBranch(norm);
+    },
+    [currentUser]
+  );
+
+  const handleSelectExecSubTab = useCallback(
+    (subtab) => {
+      if (!isManagementRole(currentUser)) return;
+      historyPushPendingRef.current = true;
+      setExecSubTab(subtab || 'branches');
+    },
+    [currentUser]
+  );
+
+  const handleChangeMobileTab = useCallback(
+    (nextMtab) => {
+      if (!isManagementRole(currentUser) && (nextMtab === 'executive' || nextMtab === 'audit')) {
+        return;
+      }
+      historyPushPendingRef.current = true;
+      setMobileTab(nextMtab);
+      if (nextMtab === 'executive') setActiveTab('executive');
+      else if (nextMtab === 'audit') setActiveTab('audit');
+      else setActiveTab('single');
+    },
+    [currentUser]
+  );
+
+  const handleCopyPageLink = useCallback(async () => {
+    if (!currentUser || typeof window === 'undefined') return;
+    const monthKeys = allMonthsList.map((m) => m.key);
+    const sanitized = sanitizeUrlStateForUser(
+      {
+        tab: safeActiveTab,
+        month: selectedMonthKey,
+        car: currentSelectedVehicle?.general?.carCode || null,
+        branch: selectedBranch !== 'all' ? selectedBranch : null,
+        subtab: execSubTab,
+        mtab: mobileTab,
+      },
+      currentUser,
+      { visibleVehicles, availableMonthKeys: monthKeys }
+    );
+    const shareUrl = `${window.location.origin}${buildCanonicalUrl(sanitized, currentUser)}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = shareUrl;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setLinkCopied(true);
+      showNotification('คัดลอกลิงค์หน้านี้เรียบร้อยแล้ว', 'success');
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      showNotification('ไม่สามารถคัดลอกลิงค์อัตโนมัติได้ กรุณาคัดลอกจากแถบที่อยู่', 'error');
+    }
+  }, [
+    currentUser,
+    allMonthsList,
+    safeActiveTab,
+    selectedMonthKey,
+    currentSelectedVehicle,
+    selectedBranch,
+    execSubTab,
+    mobileTab,
+    visibleVehicles,
+    showNotification,
+  ]);
 
   // Month select handler
   const handleSelectMonth = (key) => {
     if (!key || String(key).startsWith('sprinkle_') || String(key).includes('sync_time')) {
       return;
     }
+    hasUrlMonthOverrideRef.current = false;
+    historyPushPendingRef.current = true;
     setSelectedMonthState(key);
     setSelectedMonthKey(key);
     showNotification(`สลับข้อมูลเป็นเดือน: ${getMonthData(key)?.label || key}`, 'info');
@@ -243,7 +559,10 @@ export default function App() {
   const runMasterSync = async ({ silent = false, force = false } = {}) => {
     if (!silent) setIsRefreshing(true);
     try {
-      const result = await syncMasterWorkbookFromRemote({ force, autoSelectNew: true });
+      const result = await syncMasterWorkbookFromRemote({
+        force,
+        autoSelectNew: force || !hasUrlMonthOverrideRef.current,
+      });
       if (result.syncedAt) setLastSyncTime(result.syncedAt);
       if (result.skipped) return;
 
@@ -252,7 +571,9 @@ export default function App() {
       }
 
       setAllMonthsList(getAllMonths());
-      setSelectedMonthState(getSelectedMonthKey());
+      if (force || !hasUrlMonthOverrideRef.current) {
+        setSelectedMonthState(getSelectedMonthKey());
+      }
 
       const latest = result.syncedKeys[result.syncedKeys.length - 1];
       if (result.addedKeys.length > 0) {
@@ -281,6 +602,7 @@ export default function App() {
   const handleResetToLooker = async () => {
     setIsRefreshing(true);
     try {
+      hasUrlMonthOverrideRef.current = false;
       const latestKey = await clearAndResetToLookerMonths({ dispatch: true });
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(latestKey);
@@ -289,13 +611,6 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const showNotification = (msg, type = 'info') => {
-    setNotification({ msg, type });
-    setTimeout(() => {
-      setNotification(null);
-    }, 4000);
   };
 
   const branches = useMemo(() => {
@@ -373,6 +688,7 @@ export default function App() {
     return (
       <LoginScreen
         vehicles={data.vehicles}
+        allMonths={allMonthsList}
         onLogin={handleLogin}
         currentMonthLabel={currentMonthObj.label}
       />
@@ -385,9 +701,9 @@ export default function App() {
       <>
         <MobileVehicleView
           vehicle={currentSelectedVehicle}
-          allVehicles={data.vehicles}
+          allVehicles={visibleVehicles}
           currentMonthData={data}
-          onSelectVehicle={(v) => setSingleViewCarId(v.id)}
+          onSelectVehicle={(v) => handleSelectVehicle(v)}
           currentUser={currentUser}
           onLogout={handleLogout}
           currentMonthLabel={currentMonthObj.label}
@@ -395,10 +711,18 @@ export default function App() {
           selectedMonthKey={selectedMonthKey}
           onSelectMonth={handleSelectMonth}
           onPrint={(v) => setPrintVehicle(v)}
-          onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
-          pendingUsersCount={pendingUsersCount}
-          onOpenDataManager={() => setIsDataManagerOpen(true)}
-          onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+          onOpenApprovalModal={() => canManage && setIsApprovalModalOpen(true)}
+          pendingUsersCount={canManage ? pendingUsersCount : 0}
+          onOpenDataManager={() => canManage && setIsDataManagerOpen(true)}
+          onOpenUploadModal={() => canManage && setIsUploadNewMonthOpen(true)}
+          activeTab={mobileTab}
+          onChangeTab={handleChangeMobileTab}
+          onCopyLink={handleCopyPageLink}
+          linkCopied={linkCopied}
+          execSubTab={execSubTab}
+          onSelectExecSubTab={handleSelectExecSubTab}
+          trendBranchFilter={selectedBranch}
+          onSelectTrendBranch={handleSelectBranchState}
         />
 
         {printVehicle && (
@@ -408,7 +732,7 @@ export default function App() {
           />
         )}
 
-        {isUploadNewMonthOpen && (
+        {canManage && isUploadNewMonthOpen && (
           <UploadNewMonthModal
             onClose={() => setIsUploadNewMonthOpen(false)}
             onMonthAdded={handleMonthAdded}
@@ -416,7 +740,7 @@ export default function App() {
           />
         )}
 
-        {isApprovalModalOpen && (
+        {canManage && isApprovalModalOpen && (
           <UserApprovalModal
             isOpen={isApprovalModalOpen}
             onClose={() => setIsApprovalModalOpen(false)}
@@ -425,7 +749,7 @@ export default function App() {
           />
         )}
 
-        {isDataManagerOpen && (
+        {canManage && isDataManagerOpen && (
           <AdminDataManagerModal
             isOpen={isDataManagerOpen}
             onClose={() => setIsDataManagerOpen(false)}
@@ -462,52 +786,130 @@ export default function App() {
           allMonths={allMonthsList}
           selectedMonthKey={selectedMonthKey}
           onSelectMonth={handleSelectMonth}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          activeTab={safeActiveTab}
+          setActiveTab={navigateTab}
           onRefreshFromSheet={handleRefreshCurrentMonth}
           isRefreshing={isRefreshing}
-          onOpenUploadNewMonth={() => setIsUploadNewMonthOpen(true)}
+          onOpenUploadNewMonth={() => canManage && setIsUploadNewMonthOpen(true)}
           currentUser={currentUser}
-          onOpenApprovalModal={() => setIsApprovalModalOpen(true)}
-          pendingUsersCount={pendingUsersCount}
-          onOpenDataManager={() => setIsDataManagerOpen(true)}
           selectedBranch={selectedBranch}
           branches={branches}
         />
 
         {/* Current User Session Bar on Desktop */}
-        <div className="bg-slate-900 text-white text-xs px-4 py-1.5 flex items-center justify-between no-print">
+        <div className="bg-slate-900 text-white text-xs px-4 py-1.5 flex items-center justify-between no-print relative">
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-sky-400" />
-              <span>เข้าสู่ระบบโดย: <strong>{currentUser.name}</strong> ({currentUser.role === 'driver' ? `เบอร์รถ ${currentUser.carCode}` : currentUser.title || 'หัวหน้างาน'})</span>
+              <span>
+                เข้าสู่ระบบโดย: <strong>{currentUser.name}</strong> (
+                {isSelfOnly
+                  ? `รหัสพนักงาน ${currentUser.empId} • ${currentUser.roleLabel || (currentUser.role === 'contractor' ? 'ผู้ประกอบการ (ผปก.)' : 'พนักงานขับรถ')}`
+                  : currentUser.title || 'หัวหน้างาน'}
+                )
+              </span>
             </span>
             <div className="flex items-center gap-2.5">
-              {(currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'office') && (
-                <>
+              <button
+                type="button"
+                onClick={handleCopyPageLink}
+                title="คัดลอกลิงค์หน้านี้เพื่อส่งต่อ"
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold transition-colors text-xs cursor-pointer border ${
+                  linkCopied
+                    ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+                }`}
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>คัดลอกลิงค์แล้ว</span>
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="w-3.5 h-3.5" />
+                    <span>คัดลอกลิงค์</span>
+                  </>
+                )}
+              </button>
+              {canManage && (
+                <div className="relative">
                   <button
-                    onClick={() => setIsDataManagerOpen(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold transition-colors text-xs cursor-pointer"
+                    type="button"
+                    onClick={() => setIsSettingsMenuOpen((prev) => !prev)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold transition-colors text-xs cursor-pointer border border-slate-700"
                   >
-                    <Database className="w-3.5 h-3.5 text-sky-400" />
-                    <span>จัดการข้อมูลและสาขา</span>
-                  </button>
-
-                  <button
-                    onClick={() => setIsApprovalModalOpen(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition-colors text-xs cursor-pointer"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                    <span>จัดการอนุมัติพนักงาน</span>
+                    <Settings className="w-3.5 h-3.5 text-sky-400" />
+                    <span>ตั้งค่า</span>
                     {pendingUsersCount > 0 && (
-                      <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                      <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full">
                         {pendingUsersCount}
                       </span>
                     )}
+                    <ChevronDown className="w-3 h-3 text-slate-400" />
                   </button>
-                </>
+
+                  {isSettingsMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsSettingsMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 mt-1.5 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 text-slate-800">
+                        <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          การตรวจสอบและจัดการระบบ
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            navigateTab('audit');
+                          }}
+                          className={`w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-sky-50 flex items-center justify-between cursor-pointer ${
+                            safeActiveTab === 'audit' ? 'bg-sky-50 text-sky-700 font-bold' : ''
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <ClipboardCheck className="w-4 h-4 text-sky-600 shrink-0" />
+                            <span>ตรวจบันทึกข้อมูล</span>
+                          </span>
+                          {safeActiveTab === 'audit' && (
+                            <span className="text-[10px] text-sky-600 font-bold">กำลังเปิด</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            setIsDataManagerOpen(true);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                        >
+                          <Database className="w-4 h-4 text-slate-600 shrink-0" />
+                          <span>จัดการข้อมูลและสาขา</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSettingsMenuOpen(false);
+                            setIsApprovalModalOpen(true);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left text-xs font-semibold hover:bg-slate-50 flex items-center justify-between cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>จัดการอนุมัติพนักงาน</span>
+                          </span>
+                          {pendingUsersCount > 0 && (
+                            <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 rounded-full">
+                              {pendingUsersCount}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               <button
                 onClick={handleLogout}
@@ -544,8 +946,8 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* KPI Stat Cards for Current Month (ซ่อนเมื่ออยู่แท็บรายงานพิเศษเพื่อความกระชับ) */}
-        {activeTab !== 'executive' && activeTab !== 'audit' && activeTab !== 'percent_m79' && activeTab !== 'excellence_annual' && (
+        {/* KPI Stat Cards for Current Month (เฉพาะสิทธิ์ผู้บริหาร/เจ้าหน้าที่ และซ่อนในหน้าวิเคราะห์/รายงานพิเศษเพื่อความกระชับ) */}
+        {canManage && safeActiveTab !== 'analytics' && safeActiveTab !== 'executive' && safeActiveTab !== 'audit' && safeActiveTab !== 'excellence_annual' && safeActiveTab !== 'looker_scores' && (
           <DashboardStats 
             summary={activeSummary} 
             onFilterChange={(key, val) => {
@@ -555,25 +957,27 @@ export default function App() {
           />
         )}
 
-        {/* TAB 1: SINGLE VEHICLE DRILLDOWN (กางทุกข้อ) */}
-        {activeTab === 'single' && (
+        {/* TAB 1: SINGLE VEHICLE DRILLDOWN (ใช้ร่วมกันทั้งเจ้าหน้าที่และโหมดดูของตนเองสำหรับ ผปก./พนักงาน) */}
+        {safeActiveTab === 'single' && (
           <SingleVehicleView
-            vehicles={data.vehicles}
-            selectedVehicleId={singleViewCarId}
-            onSelectVehicle={(v) => setSingleViewCarId(v.id)}
+            vehicles={visibleVehicles}
+            selectedVehicleId={currentSelectedVehicle?.id || singleViewCarId}
+            onSelectVehicle={(v) => handleSelectVehicle(v)}
             onPrint={(v) => setPrintVehicle(v)}
             currentMonthLabel={currentMonthObj.label}
+            isSelfOnly={isSelfOnly}
+            currentUserEmpId={currentUser?.empId}
           />
         )}
 
-        {/* TAB 2: ALL VEHICLES OVERVIEW */}
-        {activeTab === 'vehicles' && (
+        {/* TAB 2: ALL VEHICLES OVERVIEW (MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'vehicles' && (
           <div>
             <FilterBar
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               selectedBranch={selectedBranch}
-              setSelectedBranch={setSelectedBranch}
+              setSelectedBranch={handleSelectBranchState}
               branches={branches}
               selectedZone={selectedZone}
               setSelectedZone={setSelectedZone}
@@ -612,10 +1016,7 @@ export default function App() {
                   <VehicleCard
                     key={vehicle.id}
                     vehicle={vehicle}
-                    onSelect={(v) => {
-                      setSingleViewCarId(v.id);
-                      setActiveTab('single');
-                    }}
+                    onSelect={(v) => handleSelectVehicle(v, 'single')}
                     onPrint={setPrintVehicle}
                   />
                 ))}
@@ -623,33 +1024,25 @@ export default function App() {
             ) : (
               <VehicleTable
                 vehicles={filteredVehicles}
-                onSelect={(v) => {
-                  setSingleViewCarId(v.id);
-                  setActiveTab('single');
-                }}
+                onSelect={(v) => handleSelectVehicle(v, 'single')}
                 onPrint={setPrintVehicle}
               />
             )}
           </div>
         )}
 
-        {/* TAB 3: BRANCH ANALYTICS OVERVIEW */}
-        {activeTab === 'analytics' && (
+        {/* TAB 3: BRANCH ANALYTICS OVERVIEW (MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'analytics' && (
           <BranchAnalytics
             data={data}
-            onSelectVehicle={(v) => {
-              setSingleViewCarId(v.id);
-              setActiveTab('single');
-            }}
-            onFilterByDefect={(code) => {
-              setActiveTab('single');
-              setSearchQuery(code);
-            }}
+            selectedBranch={selectedBranch}
+            onSelectBranch={handleSelectBranchState}
+            onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
           />
         )}
 
-        {/* TAB 4: EXECUTIVE COMPARISON VIEW */}
-        {activeTab === 'executive' && (
+        {/* TAB 4: EXECUTIVE COMPARISON VIEW (MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'executive' && (
           <ExecutiveComparisonView
             data={data}
             allMonthsList={allMonthsList}
@@ -658,37 +1051,52 @@ export default function App() {
             currentUser={currentUser}
             onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
             onOpenDataManager={() => setIsDataManagerOpen(true)}
+            subTab={execSubTab}
+            onSelectSubTab={handleSelectExecSubTab}
+            trendBranchFilter={selectedBranch}
+            onSelectTrendBranch={handleSelectBranchState}
           />
         )}
 
-        {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW */}
-        {activeTab === 'audit' && (
-          <BranchSubmissionAuditView
-            data={data}
-            allMonthsList={allMonthsList}
-            selectedMonthKey={selectedMonthKey}
-            onSelectMonth={handleSelectMonth}
-            currentUser={currentUser}
-            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
-            onFilterBranchAndNavigate={(branchName) => {
-              setSelectedBranch(branchName);
-              setActiveTab('vehicles');
-            }}
-          />
+        {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW (MOVED UNDER SETTINGS ⚙️ — MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'audit' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between text-xs shadow-2xs">
+              <div className="flex items-center gap-2 text-slate-600 font-semibold">
+                <Settings className="w-4 h-4 text-sky-600" />
+                <span>ตั้งค่า &gt; <strong className="text-slate-900">ตรวจบันทึกข้อมูล</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigateTab('single')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>กลับหน้าหลัก</span>
+              </button>
+            </div>
+            <BranchSubmissionAuditView
+              data={data}
+              allMonthsList={allMonthsList}
+              selectedMonthKey={selectedMonthKey}
+              onSelectMonth={handleSelectMonth}
+              currentUser={currentUser}
+              onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+              onFilterBranchAndNavigate={(branchName) => {
+                handleSelectBranchState(branchName);
+                navigateTab('vehicles');
+              }}
+            />
+          </div>
         )}
 
-        {/* TAB 6: PERCENT M7-9 VIEW */}
-        {activeTab === 'percent_m79' && (
-          <PercentM79View />
-        )}
-
-        {/* TAB 7: ANNUAL EXCELLENCE 2569 VIEW */}
-        {activeTab === 'excellence_annual' && (
+        {/* TAB 6: ANNUAL EXCELLENCE 2569 VIEW (MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'excellence_annual' && (
           <AnnualExcellenceView />
         )}
 
-        {/* TAB 8: LOOKER SCORES 2569 VIEW */}
-        {activeTab === 'looker_scores' && (
+        {/* TAB 7: LOOKER SCORES 2569 VIEW (MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'looker_scores' && (
           <LookerScoresView />
         )}
 
@@ -718,7 +1126,7 @@ export default function App() {
         />
       )}
 
-      {isUploadNewMonthOpen && (
+      {canManage && isUploadNewMonthOpen && (
         <UploadNewMonthModal
           onClose={() => setIsUploadNewMonthOpen(false)}
           onMonthAdded={handleMonthAdded}
@@ -726,7 +1134,7 @@ export default function App() {
         />
       )}
 
-      {isApprovalModalOpen && (
+      {canManage && isApprovalModalOpen && (
         <UserApprovalModal
           isOpen={isApprovalModalOpen}
           onClose={() => setIsApprovalModalOpen(false)}
@@ -735,7 +1143,7 @@ export default function App() {
         />
       )}
 
-      {isDataManagerOpen && (
+      {canManage && isDataManagerOpen && (
         <AdminDataManagerModal
           isOpen={isDataManagerOpen}
           onClose={() => setIsDataManagerOpen(false)}

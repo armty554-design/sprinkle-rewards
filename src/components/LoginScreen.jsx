@@ -9,7 +9,8 @@ import {
   Clock, 
   Building2,
   Briefcase,
-  BadgeCheck
+  BadgeCheck,
+  Lock
 } from 'lucide-react';
 import { 
   registerOfficeUser, 
@@ -18,10 +19,19 @@ import {
   findOfficeStaffByEmpId,
   OFFICE_BRANCH_LIST
 } from '../utils/userManagement';
+import { parseCSVData } from '../utils/parser';
+import {
+  AUTH_SESSION_VERSION,
+  resolveLoginCredential,
+  verifyAdminPassword,
+} from '../utils/authHelpers';
 
-export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel }) {
-  const [mode, setMode] = useState('login'); // 'login', 'register', 'success'
+export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, currentMonthLabel }) {
+  const [mode, setMode] = useState('login'); // 'login', 'admin_auth', 'register', 'success'
   const [inputId, setInputId] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminFailedCount, setAdminFailedCount] = useState(0);
+  const [adminLockedUntil, setAdminLockedUntil] = useState(0);
   const [error, setError] = useState('');
   
   // Registration Form State (Office Management: รหัส, ชื่อ-นามสกุล, ตำแหน่ง, สาขา)
@@ -49,87 +59,63 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
     e.preventDefault();
     setError('');
 
-    const query = inputId.trim();
-    if (!query) {
-      setError('กรุณาระบุรหัสพนักงาน หรือเบอร์รถ');
+    const result = resolveLoginCredential({
+      inputId,
+      currentVehicles: vehicles,
+      allMonths,
+      findRegisteredUserFn: findRegisteredUser,
+      isStrictModeFn: isStrictModeEnabled,
+      parseCSVFn: parseCSVData,
+    });
+
+    if (result.status === 'require_admin_password') {
+      setAdminPassword('');
+      setMode('admin_auth');
       return;
     }
 
-    // 1. Admin login bypass
-    if (query.toLowerCase() === 'admin' || query === '1111' || query === '0000' || query === '99999') {
-      onLogin({
-        role: 'admin',
-        empId: 'ADMIN',
-        name: 'ผู้ดูแลระบบสาขา',
-        title: 'ผู้จัดการ / แอดมิน'
-      });
+    if (result.status === 'ok') {
+      onLogin(result.user);
       return;
     }
 
-    // 2. Check registered office staff list for approval status
-    const registered = findRegisteredUser(query);
-    if (registered) {
-      if (registered.status === 'pending') {
-        setError(`⚠️ รหัสพนักงาน ${registered.empId} อยู่ระหว่างรอแอดมินอนุมัติการเข้าใช้งาน (ตำแหน่ง: ${registered.position || 'ออฟฟิศ'}) กรุณาติดต่อผู้ดูแลระบบ`);
-        return;
+    setError(result.message || 'ไม่พบรหัสพนักงานนี้ในระบบ');
+  };
+
+  const handleAdminPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    const now = Date.now();
+    if (adminLockedUntil > now) {
+      const waitSec = Math.ceil((adminLockedUntil - now) / 1000);
+      setError(`ลองผิดเกินกำหนด กรุณารอ ${waitSec} วินาทีแล้วลองใหม่อีกครั้ง`);
+      return;
+    }
+
+    const ok = await verifyAdminPassword(adminPassword);
+    if (!ok) {
+      const nextCount = adminFailedCount + 1;
+      setAdminFailedCount(nextCount);
+      if (nextCount >= 5) {
+        setAdminLockedUntil(Date.now() + 30_000);
+        setAdminFailedCount(0);
+        setError('กรอกรหัสผ่านผู้ดูแลระบบไม่ถูกต้องครบ 5 ครั้ง ระบบระงับการลองชั่วคราว 30 วินาที');
+      } else {
+        setError(`รหัสผ่านผู้ดูแลระบบไม่ถูกต้อง (เหลือโอกาสอีก ${5 - nextCount} ครั้ง)`);
       }
-      if (registered.status === 'rejected') {
-        setError(`❌ คำขอลงทะเบียนไม่ผ่านการอนุมัติ: ${registered.rejectReason || 'กรุณาติดต่อผู้ดูแลระบบ'}`);
-        return;
-      }
-      if (registered.status === 'approved') {
-        onLogin({
-          role: 'office',
-          empId: registered.empId,
-          name: registered.fullName,
-          title: `${registered.position || 'เจ้าหน้าที่จัดการ'} (${registered.branch || 'สนญ.'})`,
-          branch: registered.branch
-        });
-        return;
-      }
-    }
-
-    // 3. If Strict Mode is enabled, unapproved users cannot login
-    if (isStrictModeEnabled()) {
-      setError('🔒 ระบบเปิดโหมดความปลอดภัยเข้มงวด: รหัสนี้ยังไม่ได้รับการอนุมัติจากแอดมิน กรุณากดปุ่ม "สมัครเข้าใช้งานสำหรับพนักงาน สำหรับออฟฟิศที่เข้าจัดการ"');
       return;
     }
 
-    // 4. Default mode: check matching driver vehicle by empId or carCode in CSV
-    const matchedVehicle = vehicles.find(v => 
-      v.general.empId === query || 
-      v.general.carCode.toLowerCase() === query.toLowerCase()
-    );
-
-    if (matchedVehicle) {
-      onLogin({
-        role: 'driver',
-        empId: matchedVehicle.general.empId,
-        carCode: matchedVehicle.general.carCode,
-        name: matchedVehicle.general.fullName,
-        vehicleId: matchedVehicle.id
-      });
-      return;
-    }
-
-    // 5. Check matching supervisor in CSV
-    const matchedSupervisor = vehicles.find(v => 
-      v.general.supervisorLogisticsId === query || 
-      v.general.supervisorAdminId === query
-    );
-
-    if (matchedSupervisor) {
-      const isLogistics = matchedSupervisor.general.supervisorLogisticsId === query;
-      onLogin({
-        role: 'supervisor',
-        empId: query,
-        name: isLogistics ? matchedSupervisor.general.supervisorLogisticsName : matchedSupervisor.general.supervisorAdminName,
-        title: isLogistics ? 'หัวหน้าโลจิสติกส์' : 'หัวหน้าธุรการ'
-      });
-      return;
-    }
-
-    setError('ไม่พบรหัสพนักงาน หรือเบอร์รถนี้ในระบบ');
+    setAdminFailedCount(0);
+    setAdminLockedUntil(0);
+    onLogin({
+      role: 'admin',
+      empId: 'ADMIN',
+      name: 'ผู้ดูแลระบบสาขา',
+      title: 'ผู้จัดการ / แอดมิน',
+      sessionVersion: AUTH_SESSION_VERSION,
+    });
   };
 
   const handleRegisterSubmit = (e) => {
@@ -201,21 +187,21 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
           <>
             <div className="mb-6">
               <h2 className="text-lg font-bold text-slate-900">เข้าสู่ระบบ</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                ระบุรหัสพนักงานของคุณ หรือเบอร์รถเพื่อเข้าใช้งานระบบ
+              <p className="text-xs text-slate-500 mt-0.5">
+                ระบุ<strong className="text-slate-700">รหัสพนักงาน</strong>ของท่านเพื่อเข้าตรวจสอบข้อมูล (สำหรับพนักงานและ ผปก.)
               </p>
             </div>
 
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  รหัสพนักงาน หรือ เบอร์รถ
+                  รหัสพนักงาน
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="ระบุรหัสพนักงาน หรือเบอร์รถ"
+                    placeholder="กรอกรหัสพนักงานของท่าน"
                     value={inputId}
                     onChange={(e) => {
                       setInputId(e.target.value);
@@ -258,6 +244,63 @@ export default function LoginScreen({ vehicles = [], onLogin, currentMonthLabel 
               <UserPlus className="w-4 h-4 text-sky-500 shrink-0" />
               <span>สมัครเข้าใช้งานสำหรับพนักงาน สำหรับออฟฟิศที่เข้าจัดการ</span>
             </button>
+          </>
+        )}
+
+        {/* 1B. ADMIN PASSWORD CHALLENGE MODE */}
+        {mode === 'admin_auth' && (
+          <>
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">ยืนยันตัวตนผู้ดูแลระบบ</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  กรุณากรอกรหัสผ่านผู้ดูแลระบบเพื่อเข้าใช้งานสิทธิ์ Admin
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setAdminPassword('');
+                  setError('');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="กลับหน้าเข้าสู่ระบบ"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  รหัสผ่านผู้ดูแลระบบ (Admin Password)
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    placeholder="กรอกรหัสผ่านผู้ดูแลระบบ"
+                    value={adminPassword}
+                    onChange={(e) => {
+                      setAdminPassword(e.target.value);
+                      setError('');
+                    }}
+                    className="w-full pl-10 pr-4 py-3 text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 font-medium tracking-wide placeholder:font-normal placeholder:text-slate-400"
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.99] cursor-pointer"
+              >
+                <span>ยืนยันและเข้าสู่ระบบ</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
           </>
         )}
 

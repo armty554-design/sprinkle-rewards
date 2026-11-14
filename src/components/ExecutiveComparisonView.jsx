@@ -53,10 +53,22 @@ export default function ExecutiveComparisonView({
   onSelectMonth,
   currentUser,
   onOpenUploadModal,
-  onOpenDataManager
+  onOpenDataManager,
+  subTab: controlledSubTab,
+  onSelectSubTab,
+  trendBranchFilter: controlledTrendBranch,
+  onSelectTrendBranch,
 }) {
   // Sub-tabs in Executive View
-  const [subTab, setSubTab] = useState('branches'); // 'branches', 'trend', 'head2head'
+  const [internalSubTab, setInternalSubTab] = useState('branches'); // 'branches', 'trend', 'head2head'
+  const subTab = controlledSubTab || internalSubTab;
+  const setSubTab = (next) => {
+    if (typeof onSelectSubTab === 'function') {
+      onSelectSubTab(next);
+    } else {
+      setInternalSubTab(next);
+    }
+  };
   
   // Head-to-Head month selectors
   const [h2hMonthA, setH2hMonthA] = useState(() => {
@@ -67,7 +79,16 @@ export default function ExecutiveComparisonView({
   });
 
   // Filter branch for trend view ('all' or specific branch)
-  const [trendBranchFilter, setTrendBranchFilter] = useState('all');
+  const [internalTrendBranch, setInternalTrendBranch] = useState('all');
+  const trendBranchFilter = controlledTrendBranch || internalTrendBranch;
+  const setTrendBranchFilter = (next) => {
+    const val = !next || next === 'ALL' ? 'all' : next;
+    if (typeof onSelectTrendBranch === 'function') {
+      onSelectTrendBranch(val);
+    } else {
+      setInternalTrendBranch(val);
+    }
+  };
 
   // 1. EXTRACT BRANCHES FROM CURRENT MONTH
   const currentBranches = useMemo(() => {

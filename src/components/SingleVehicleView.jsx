@@ -19,7 +19,9 @@ export default function SingleVehicleView({
   selectedVehicleId, 
   onSelectVehicle, 
   onPrint,
-  currentMonthLabel 
+  currentMonthLabel,
+  isSelfOnly = false,
+  currentUserEmpId = ''
 }) {
   const [search, setSearch] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
@@ -77,8 +79,20 @@ export default function SingleVehicleView({
 
   if (!currentVehicle) {
     return (
-      <div className="bg-white rounded-2xl p-12 text-center text-slate-400 border border-slate-100">
-        ไม่พบข้อมูลเบอร์รถในเดือนนี้
+      <div className="bg-white rounded-2xl p-10 text-center border border-slate-200 max-w-xl mx-auto my-6">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+          <User className="w-6 h-6" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900">
+          {isSelfOnly
+            ? `ไม่พบข้อมูลของรหัสพนักงาน ${currentUserEmpId || ''} ในเดือน ${currentMonthLabel}`
+            : 'ไม่พบข้อมูลเบอร์รถในเดือนนี้'}
+        </h3>
+        <p className="text-xs text-slate-500 mt-1">
+          {isSelfOnly
+            ? 'กรุณาเลือกเดือนอื่นจากตัวเลือกเดือนด้านบนเพื่อดูประวัติคะแนนและเงินรางวัลของท่าน'
+            : 'กรุณาเลือกเดือนหรือสาขาอื่น'}
+        </p>
       </div>
     );
   }
@@ -134,16 +148,21 @@ export default function SingleVehicleView({
     ? allGroups 
     : allGroups.filter(g => g.key === activeGroupFilter);
 
+  const showLeftSelector = !isSelfOnly || vehicles.length > 1;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
-      {/* LEFT COLUMN: Clean Vehicle Selector (4 cols) */}
+      {/* LEFT COLUMN: Vehicle Selector (Hidden in self-only single-car mode) */}
+      {showLeftSelector && (
       <div className="lg:col-span-4 space-y-3">
         <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-2xs">
           
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-slate-800 text-sm">เลือกรถ</span>
+              <span className="font-bold text-slate-800 text-sm">
+                {isSelfOnly ? 'รถของฉัน' : 'เลือกรถ'}
+              </span>
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
                 {filteredList.length} คัน
               </span>
@@ -151,7 +170,8 @@ export default function SingleVehicleView({
             <span className="text-xs text-slate-400 font-medium">{currentMonthLabel}</span>
           </div>
 
-          {/* Search & Branch & Zone */}
+          {/* Search & Branch & Zone (Management only) */}
+          {!isSelfOnly && (
           <div className="space-y-2 mb-3">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -201,6 +221,7 @@ export default function SingleVehicleView({
               </select>
             </div>
           </div>
+          )}
 
           {/* Vehicle List */}
           <div className="space-y-1 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
@@ -271,37 +292,48 @@ export default function SingleVehicleView({
 
         </div>
       </div>
+      )}
 
-      {/* RIGHT COLUMN: Clean Single Vehicle Details (8 cols) */}
-      <div className="lg:col-span-8 space-y-4">
+      {/* RIGHT COLUMN: Clean Single Vehicle Details */}
+      <div className={`${showLeftSelector ? 'lg:col-span-8' : 'lg:col-span-12'} space-y-4`}>
         
         {/* NAVIGATOR BAR */}
         <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/70 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handlePrev}
-              disabled={currentIndex <= 0}
-              className="p-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 text-xs font-medium flex items-center gap-1 transition-colors"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>ก่อนหน้า</span>
-            </button>
-            <span className="text-xs text-slate-500 px-1 font-medium">
-              คันที่ {currentIndex + 1} จาก {filteredList.length}
-            </span>
-            <button
-              onClick={handleNext}
-              disabled={currentIndex >= filteredList.length - 1}
-              className="p-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 text-xs font-medium flex items-center gap-1 transition-colors"
-            >
-              <span>ถัดไป</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {showLeftSelector ? (
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handlePrev}
+                disabled={currentIndex <= 0}
+                className="p-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 text-xs font-medium flex items-center gap-1 transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>ก่อนหน้า</span>
+              </button>
+              <span className="text-xs text-slate-500 px-1 font-medium">
+                คันที่ {currentIndex + 1} จาก {filteredList.length}
+              </span>
+              <button
+                onClick={handleNext}
+                disabled={currentIndex >= filteredList.length - 1}
+                className="p-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 text-xs font-medium flex items-center gap-1 transition-colors"
+              >
+                <span>ถัดไป</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200">
+                <User className="w-3.5 h-3.5" />
+                ข้อมูลของฉัน (รหัสพนักงาน {general.empId})
+              </span>
+              <span className="text-slate-400 hidden sm:inline">• {currentMonthLabel}</span>
+            </div>
+          )}
 
           <button
             onClick={() => onPrint(currentVehicle)}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-slate-400" />
             <span>พิมพ์สลิป</span>
