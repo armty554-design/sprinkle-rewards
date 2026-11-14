@@ -1,20 +1,23 @@
-// Month data manager supporting preloaded detailed monthly sheets (01-2569 .. 09-2569), user-uploaded months,
-// and high-capacity IndexedDB storage for saving all 18 branches across multiple months without 5MB quota errors.
+// Month data manager supporting preloaded detailed monthly sheets (01-2569 .. 09-2569) and automatic live sync (10-2569..12-2569+),
+// plus high-capacity IndexedDB storage for saving all 18 branches across multiple months without 5MB quota errors.
 import { PRELOADED_MONTHS } from '../data/allMonthsData.js';
 import { idbSaveMonth, idbGetAllMonths, idbDeleteMonth } from './idbStorage.js';
 import Papa from 'papaparse';
 import { isLookerFormat, buildLookerColMap, splitLookerCsvByMonth, LOOKER_GID } from './lookerParser.js';
 import { normalizeDetailedSheetRows } from './parser.js';
-import { extractMonthlySheetsFromBuffer, MASTER_SPREADSHEET_ID } from './sheetWorkbookSync.js';
+import { extractMonthlySheetsFromBuffer, MASTER_SPREADSHEET_ID, MASTER_XLSX_URL } from './sheetWorkbookSync.js';
 
 const STORAGE_CUSTOM_MONTHS = 'sprinkle_custom_months';
 const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
 const STORAGE_LOOKER_VERSION = 'sprinkle_full_sheets69_reset_v2';
 const LOOKER_CLEAN_VERSION = 'sheets69_full_v2';
+const STORAGE_LAST_AUTO_SYNC = 'sprinkle_last_auto_sync_ts';
+export const AUTO_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
 
-// In-memory cache for fast synchronous access
+// In-memory cache & active sync lock
 let customMonthsCache = null;
 let isInitialized = false;
+let activeWorkbookSyncPromise = null;
 
 export const THAI_MONTH_NAMES = [
   '',
@@ -86,14 +89,50 @@ function trimRowColumns(row, minKeep = 145) {
 }
 
 /**
- * Safely persists custom months into localStorage if size allows, without failing if quota is exceeded.
+ * Returns epoch ms timestamp of last successful remote workbook sync (or 0 if never).
+ */
+export function getLastAutoSyncTime() {
+  try {
+    const raw = localStorage.getItem(STORAGE_LAST_AUTO_SYNC);
+    const val = parseInt(raw || '0', 10);
+    return Number.isFinite(val) ? val : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/**
+ * Checks whether enough time has passed since the last sync to re-fetch Google Sheets automatically.
+ */
+export function shouldAutoSync(cooldownMs = AUTO_SYNC_COOLDOWN_MS) {
+  const last = getLastAutoSyncTime();
+  return !last || (Date.now() - last) >= cooldownMs;
+}
+
+/**
+ * Safely persists custom months into localStorage if size allows; if 5MB quota is exceeded,
+ * falls back to keeping newest / non-preloaded months first while IndexedDB keeps all months.
  */
 function trySyncToLocalStorage(monthsObj) {
   try {
     localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(monthsObj));
   } catch (err) {
-    // LocalStorage quota exceeded (5MB limit reached) - safely fall back to IndexedDB
-    console.info('LocalStorage quota exceeded (5MB limit). Data is securely persisted in IndexedDB.');
+    try {
+      // Prioritize newest months (e.g. 10-2569..12-2569) so startup stays instant before IndexedDB resolves
+      const sortedKeys = Object.keys(monthsObj).sort().reverse();
+      const partial = {};
+      for (const k of sortedKeys) {
+        partial[k] = monthsObj[k];
+        const serialized = JSON.stringify(partial);
+        if (serialized.length > 2_500_000) {
+          delete partial[k];
+          break;
+        }
+      }
+      localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(partial));
+    } catch (e2) {
+      console.info('LocalStorage quota exceeded (5MB limit). Data is securely persisted in IndexedDB.');
+    }
   }
 }
 
@@ -123,6 +162,7 @@ export async function clearAndResetToLookerMonths({ dispatch = true } = {}) {
   localStorage.removeItem('sprinkle_current_data');
   localStorage.removeItem('sprinkle_daily_history');
   localStorage.removeItem('sprinkle_looker_clean_reset_v1');
+  localStorage.removeItem(STORAGE_LAST_AUTO_SYNC);
   const latestKey = getLatestPreloadedKey();
   localStorage.setItem(STORAGE_SELECTED_MONTH, latestKey);
   localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
@@ -173,6 +213,11 @@ export async function initStorage() {
     }
 
     isInitialized = true;
+    const prevSaved = localStorage.getItem(STORAGE_SELECTED_MONTH);
+    const resolvedSelected = getSelectedMonthKey();
+    if (prevSaved !== resolvedSelected) {
+      hasUpdates = true;
+    }
     if (hasUpdates) {
       window.dispatchEvent(new Event('sprinkle_months_updated'));
     }
@@ -227,47 +272,124 @@ export async function syncLookerMonthsToStorage(lookerCsvText) {
 }
 
 /**
- * Syncs all detailed monthly sheets (`01-2569` .. `09-2569`+) parsed from an XLSX ArrayBuffer
- * of the master Google Sheet into IndexedDB / storage.
+ * Syncs all detailed monthly sheets (`01-2569` .. `12-2569`+) parsed from an XLSX ArrayBuffer
+ * of the master Google Sheet into IndexedDB / storage, skipping duplicates identical to PRELOADED_MONTHS
+ * and automatically selecting newly added future months.
  */
-export async function syncWorkbookMonthsToStorage(arrayBuffer) {
+export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew = true } = {}) {
   const monthsMap = extractMonthlySheetsFromBuffer(arrayBuffer);
   const syncedKeys = Object.keys(monthsMap).sort();
   if (syncedKeys.length === 0) {
-    return { syncedKeys: [], monthsMap: {} };
+    return { syncedKeys: [], addedKeys: [], updatedKeys: [], hasChanges: false, monthsMap: {}, syncedAt: Date.now() };
   }
 
-  const customMonths = getCustomMonths();
-  const now = new Date().toISOString();
+  const beforeKeys = new Set(getAllMonths().map(m => m.key));
+  const prevLatest = getAllMonths()[0]?.key || '';
+  const customMonths = { ...getCustomMonths() };
+  const nowIso = new Date().toISOString();
+  const addedKeys = [];
+  const updatedKeys = [];
+  let customModified = false;
 
   for (const key of syncedKeys) {
     const item = monthsMap[key];
-    const monthObj = {
-      key,
-      label: item.label,
-      sheetName: item.sheetName,
-      spreadsheetId: MASTER_SPREADSHEET_ID,
-      source: 'sheets_01_09',
-      csv: item.csv,
-      uploadedAt: now,
-      note: `ข้อมูลครบทั้ง ${item.branches.length} สาขา จากแผ่นงาน ${item.sheetName} (${item.vehicleCount} คัน, รางวัลรวม ฿${item.totalReward.toLocaleString()})`
-    };
-    customMonths[key] = monthObj;
-    await idbSaveMonth(monthObj);
+    const preloadedCsv = PRELOADED_MONTHS[key]?.csv;
+    const existingCustom = customMonths[key];
+    const effectivePrevCsv = existingCustom?.csv || preloadedCsv || '';
+
+    if (!beforeKeys.has(key)) {
+      addedKeys.push(key);
+    } else if (effectivePrevCsv !== item.csv) {
+      updatedKeys.push(key);
+    }
+
+    if (preloadedCsv && item.csv === preloadedCsv) {
+      // Matches bundled preloaded month byte-for-byte; remove any stale custom override
+      if (existingCustom) {
+        delete customMonths[key];
+        await idbDeleteMonth(key);
+        customModified = true;
+      }
+      continue;
+    }
+
+    if (!existingCustom || existingCustom.csv !== item.csv) {
+      const monthObj = {
+        key,
+        label: item.label,
+        sheetName: item.sheetName,
+        spreadsheetId: MASTER_SPREADSHEET_ID,
+        source: 'sheets_01_09',
+        csv: item.csv,
+        uploadedAt: nowIso,
+        note: `ข้อมูลครบทั้ง ${item.branches.length} สาขา จากแผ่นงาน ${item.sheetName} (${item.vehicleCount} คัน, รางวัลรวม ฿${item.totalReward.toLocaleString()})`
+      };
+      customMonths[key] = monthObj;
+      await idbSaveMonth(monthObj);
+      customModified = true;
+    }
   }
 
-  customMonthsCache = customMonths;
-  trySyncToLocalStorage(customMonths);
+  if (customModified) {
+    customMonthsCache = customMonths;
+    trySyncToLocalStorage(customMonths);
+  }
+
+  const syncedAt = Date.now();
   localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
+  localStorage.setItem(STORAGE_LAST_AUTO_SYNC, String(syncedAt));
 
   const latestSyncedKey = syncedKeys[syncedKeys.length - 1];
   const currentSelected = getSelectedMonthKey();
-  if (!syncedKeys.includes(currentSelected) && latestSyncedKey) {
+  const newestAddedKey = addedKeys.length > 0 ? addedKeys[addedKeys.length - 1] : '';
+
+  if (newestAddedKey && autoSelectNew && (!syncedKeys.includes(currentSelected) || currentSelected === prevLatest || newestAddedKey > currentSelected)) {
+    setSelectedMonthKey(newestAddedKey);
+  } else if (!syncedKeys.includes(currentSelected) && latestSyncedKey) {
     setSelectedMonthKey(latestSyncedKey);
   }
 
-  window.dispatchEvent(new Event('sprinkle_months_updated'));
-  return { syncedKeys, monthsMap };
+  const hasChanges = addedKeys.length > 0 || updatedKeys.length > 0 || customModified;
+  if (hasChanges) {
+    window.dispatchEvent(new Event('sprinkle_months_updated'));
+  }
+
+  return { syncedKeys, addedKeys, updatedKeys, hasChanges, monthsMap, syncedAt };
+}
+
+/**
+ * Fetches the live Google Sheet `.xlsx` workbook and syncs all monthly tabs (`01-2569`..`12-2569`+).
+ * Coalesces concurrent calls and honors the cooldown unless `force: true`.
+ */
+export async function syncMasterWorkbookFromRemote({ force = false, maxAgeMs = AUTO_SYNC_COOLDOWN_MS, autoSelectNew = true } = {}) {
+  if (!force && !shouldAutoSync(maxAgeMs)) {
+    return {
+      skipped: true,
+      syncedKeys: getAllMonths().map(m => m.key).sort(),
+      addedKeys: [],
+      updatedKeys: [],
+      hasChanges: false,
+      syncedAt: getLastAutoSyncTime()
+    };
+  }
+
+  if (activeWorkbookSyncPromise) {
+    return activeWorkbookSyncPromise;
+  }
+
+  activeWorkbookSyncPromise = (async () => {
+    const res = await fetch(`${MASTER_XLSX_URL}&_t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    const result = await syncWorkbookMonthsToStorage(buffer, { autoSelectNew });
+    return { ...result, skipped: false };
+  })();
+
+  try {
+    return await activeWorkbookSyncPromise;
+  } finally {
+    activeWorkbookSyncPromise = null;
+  }
 }
 
 // Get list of all available months (Preloaded 01-2569..09-2569 + User uploaded/synced)
@@ -623,6 +745,10 @@ export function getMonthQuickStats(csvText) {
 
 export function getSelectedMonthKey() {
   const saved = localStorage.getItem(STORAGE_SELECTED_MONTH);
+  // Before async IndexedDB hydration finishes, preserve valid YYYY-MM selection (e.g. 2569-10..2569-12)
+  if (!isInitialized && saved && /^25\d{2}-\d{2}$/.test(saved)) {
+    return saved;
+  }
   const all = getAllMonths();
   const validKeys = new Set(all.map(m => m.key));
   if (!saved || saved.startsWith('sprinkle_') || saved.includes('sync_time') || (validKeys.size > 0 && !validKeys.has(saved))) {

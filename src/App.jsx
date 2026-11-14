@@ -28,6 +28,8 @@ import {
   mergeBranchIntoMonth,
   syncLookerMonthsToStorage,
   syncWorkbookMonthsToStorage,
+  syncMasterWorkbookFromRemote,
+  getLastAutoSyncTime,
   clearAndResetToLookerMonths,
   getSelectedMonthKey, 
   setSelectedMonthKey,
@@ -55,12 +57,14 @@ export default function App() {
   const [selectedMonthKey, setSelectedMonthState] = useState(() => {
     const k = getSelectedMonthKey();
     if (!k || String(k).startsWith('sprinkle_') || String(k).includes('sync_time')) {
-      setSelectedMonthKey('2569-09');
-      return '2569-09';
+      const fallbackKey = getAllMonths()[0]?.key || '2569-09';
+      setSelectedMonthKey(fallbackKey);
+      return fallbackKey;
     }
     return k;
   });
   const [allMonthsList, setAllMonthsList] = useState(() => getAllMonths());
+  const [lastSyncTime, setLastSyncTime] = useState(() => getLastAutoSyncTime());
 
   // Active view tab (Desktop)
   const [activeTab, setActiveTab] = useState('single'); // 'single', 'vehicles', 'analytics'
@@ -143,12 +147,29 @@ export default function App() {
     return () => window.removeEventListener('sprinkle_users_updated', handleUsersUpdate);
   }, []);
 
-  // Initialize persistent storage (IndexedDB + clean Looker 69 reset if needed)
+  // Initialize persistent storage & automatically check Google Sheet for new/updated months (e.g. 10-2569..12-2569)
   useEffect(() => {
+    let cancelled = false;
     initStorage().then(() => {
+      if (cancelled) return;
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(getSelectedMonthKey());
+      runMasterSync({ silent: true, force: false });
     });
+
+    const handleVisibilityOrFocus = () => {
+      if (!document.hidden) {
+        runMasterSync({ silent: true, force: false });
+      }
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
   }, []);
 
   // Sync months on custom months update
@@ -218,27 +239,43 @@ export default function App() {
     }
   };
 
-  // Sync all months & all 18 branches live from Master Google Sheet (01-2569 .. latest)
-  const handleRefreshCurrentMonth = async () => {
-    setIsRefreshing(true);
+  // Automatic + manual sync of all detailed monthly sheets (`01-2569` .. `12-2569`+) from Google Sheet
+  const runMasterSync = async ({ silent = false, force = false } = {}) => {
+    if (!silent) setIsRefreshing(true);
     try {
-      const res = await fetch(`${MASTER_XLSX_URL}&_t=${Date.now()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const buffer = await res.arrayBuffer();
+      const result = await syncMasterWorkbookFromRemote({ force, autoSelectNew: true });
+      if (result.syncedAt) setLastSyncTime(result.syncedAt);
+      if (result.skipped) return;
 
-      const { syncedKeys } = await syncWorkbookMonthsToStorage(buffer);
-      if (syncedKeys.length === 0) {
-        throw new Error('ไม่พบแผ่นงานรายเดือน (เช่น 01-2569 – 09-2569) ในไฟล์ Google Sheet');
+      if (!result.syncedKeys || result.syncedKeys.length === 0) {
+        throw new Error('ไม่พบแผ่นงานรายเดือน (เช่น 01-2569 – 12-2569) ในไฟล์ Google Sheet');
       }
 
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(getSelectedMonthKey());
-      showNotification(`ซิงค์ข้อมูลล่าสุดครบ ${syncedKeys.length} เดือน (${syncedKeys[0]} – ${syncedKeys[syncedKeys.length - 1]}) สำเร็จแล้ว!`, 'success');
+
+      const latest = result.syncedKeys[result.syncedKeys.length - 1];
+      if (result.addedKeys.length > 0) {
+        const addedText = result.addedKeys.join(', ');
+        showNotification(`อัปเดตเดือนใหม่อัตโนมัติ (${addedText}) ครบ ${result.syncedKeys.length} เดือนจาก Google Sheet แล้ว!`, 'success');
+      } else if (result.updatedKeys.length > 0) {
+        showNotification(`ซิงค์และอัปเดตข้อมูลล่าสุด ${result.updatedKeys.length} เดือน (${result.syncedKeys[0]} – ${latest}) สำเร็จแล้ว!`, 'success');
+      } else if (!silent) {
+        showNotification(`ข้อมูลเป็นปัจจุบันแล้ว (ครบ ${result.syncedKeys.length} เดือน: ${result.syncedKeys[0]} – ${latest})`, 'info');
+      }
     } catch (err) {
-      showNotification('ไม่สามารถซิงค์จาก Google Sheet ได้: ' + err.message, 'error');
+      if (!silent) {
+        showNotification('ไม่สามารถซิงค์จาก Google Sheet ได้: ' + err.message, 'error');
+      } else {
+        console.info('Auto-sync deferred (offline/network):', err.message);
+      }
     } finally {
-      setIsRefreshing(false);
+      if (!silent) setIsRefreshing(false);
     }
+  };
+
+  const handleRefreshCurrentMonth = async () => {
+    await runMasterSync({ silent: false, force: true });
   };
 
   const handleResetToLooker = async () => {
@@ -247,7 +284,8 @@ export default function App() {
       const latestKey = await clearAndResetToLookerMonths({ dispatch: true });
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(latestKey);
-      showNotification('ล้างแคชข้อมูลเก่าทั้งหมด และรีเซ็ตเป็นชุดข้อมูลรายเดือน (01-2569 – ล่าสุด) เรียบร้อยแล้ว', 'success');
+      setLastSyncTime(0);
+      showNotification('ล้างแคชข้อมูลเก่าทั้งหมด และรีเซ็ตเป็นชุดข้อมูลรายเดือนหลักเรียบร้อยแล้ว', 'success');
     } finally {
       setIsRefreshing(false);
     }
@@ -406,6 +444,7 @@ export default function App() {
             onSyncAllFromLooker={handleRefreshCurrentMonth}
             onResetToLooker={handleResetToLooker}
             isSyncingLooker={isRefreshing}
+            lastSyncTime={lastSyncTime}
           />
         )}
       </>
@@ -715,6 +754,7 @@ export default function App() {
           onSyncAllFromLooker={handleRefreshCurrentMonth}
           onResetToLooker={handleResetToLooker}
           isSyncingLooker={isRefreshing}
+          lastSyncTime={lastSyncTime}
         />
       )}
 

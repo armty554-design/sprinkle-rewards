@@ -38,7 +38,8 @@ export default function AdminDataManagerModal({
   onDataChanged,
   onSyncAllFromLooker,
   onResetToLooker,
-  isSyncingLooker
+  isSyncingLooker,
+  lastSyncTime = 0
 }) {
   const [activeTab, setActiveTab] = useState('months'); // 'months', 'branch_stats'
   const [notice, setNotice] = useState(null);
@@ -54,7 +55,12 @@ export default function AdminDataManagerModal({
         stats
       };
     });
-  }, [isOpen, notice, currentMonthKey]);
+  }, [isOpen, notice, currentMonthKey, lastSyncTime]);
+
+  const latestMonthSummary = monthsList[0];
+  const oldestMonthKey = monthsList[monthsList.length - 1]?.key || '2569-01';
+  const latestMonthKey = latestMonthSummary?.key || '2569-09';
+  const formattedLastSync = lastSyncTime ? new Date(lastSyncTime).toLocaleString('th-TH') : '';
 
   const showNotice = (msg, type = 'success') => {
     setNotice({ msg, type });
@@ -126,7 +132,7 @@ export default function AdminDataManagerModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                จัดการฐานข้อมูลจากแผ่นงานรายเดือน 01-2569 – 09-2569 (18 สาขา รายละเอียดครบทุกข้อ) และอัปโหลดข้อมูลรายเดือน
+                จัดการฐานข้อมูลจากแผ่นงานรายเดือน {oldestMonthKey} – {latestMonthKey} (รองรับเดือนใหม่ 10-2569 – 12-2569 อัตโนมัติ)
               </p>
             </div>
           </div>
@@ -233,19 +239,25 @@ export default function AdminDataManagerModal({
                 <span className="font-semibold text-slate-700">ทั้งหมด {monthsList.length} เดือน</span>
               </div>
 
-              {/* Master Sheets (01-2569 .. latest) Live Sync & Reset Banner */}
+              {/* Master Sheets (01-2569 .. 12-2569+) Auto & Manual Live Sync Banner */}
               <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-700 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    <h4 className="font-bold text-sm">ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Google Sheet (01-2569 – ล่าสุด)</h4>
+                    <h4 className="font-bold text-sm">ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Google Sheet อัตโนมัติ</h4>
                     <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">
-                      รายละเอียดครบทุกข้อ • 18 สาขา
+                      อัปเดตอัตโนมัติ • {monthsList.length} เดือน • 18 สาขา
                     </span>
                   </div>
                   <p className="text-xs text-sky-100 leading-relaxed">
-                    ดึงข้อมูลล่าสุดจากแผ่นงานรายเดือน <strong>01-2569 ถึงล่าสุด</strong> ครบทั้ง 18 สาขาปฏิบัติการ พร้อมรายละเอียดคะแนนทุกข้อย่อย 1.1–4.7, 5.1–5.2, เงินพิเศษ และยอดหัก/รอหัก (กันยายน 2569: 382 คัน, รางวัลรวม ฿846,180)
+                    ระบบจะตรวจดึงแผ่นงานรายเดือนใหม่ (เช่น <strong>10-2569 – 12-2569</strong> และเดือนถัดไป) จาก Google Sheet ให้อัตโนมัติทุกครั้งที่เปิดหน้าเว็บ พร้อมรายละเอียดครบทุกข้อย่อย 1.1–4.7, 5.1–5.2
+                    {latestMonthSummary ? ` (ล่าสุด ${latestMonthSummary.label}: ${latestMonthSummary.stats.count.toLocaleString()} คัน, รางวัลรวม ฿${latestMonthSummary.stats.totalReward.toLocaleString()})` : ''}
                   </p>
+                  {formattedLastSync && (
+                    <p className="text-[11px] text-sky-200 font-medium">
+                      ตรวจอัปเดตจาก Google Sheet ล่าสุดเมื่อ: {formattedLastSync}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
                   <button

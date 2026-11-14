@@ -82,8 +82,9 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
           const validSheets = names.filter(isLikelyMonthSheet);
           setCheckedSheets(validSheets.length > 0 ? validSheets : names);
 
-          // Pick the best sheet: prefer 09-2569 / 2569-09 or latest valid month sheet
-          const targetSheet = names.find(s => s === '09-2569' || s === '2569-09') || validSheets[validSheets.length - 1] || names[names.length - 1] || names[0];
+          // Pick the highest chronological MM-25XX / 25XX-MM sheet dynamically (e.g. 12-2569 > 09-2569)
+          const sortedValidSheets = [...validSheets].sort((a, b) => normalizeMonthKey(a).localeCompare(normalizeMonthKey(b)));
+          const targetSheet = sortedValidSheets[sortedValidSheets.length - 1] || names[names.length - 1] || names[0];
           setSelectedSheetName(targetSheet);
 
           if (targetSheet && wb.Sheets[targetSheet]) {
@@ -463,7 +464,7 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
                   onClick={() => setSheetUrl(MASTER_LATEST_SHEET_URL)}
                   className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors shrink-0"
                 >
-                  ใช้ลิงก์ชีต 09-2569 (หลัก)
+                  ใช้ลิงก์ชีตหลัก (Google Sheet)
                 </button>
               </div>
             </div>

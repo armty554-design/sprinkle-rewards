@@ -22,6 +22,8 @@ import { idbGetItem, idbSetItem } from '../utils/idbStorage';
 
 const STORAGE_KEY = 'sprinkle_looker_scores_csv';
 const STORAGE_SYNC_TIME_KEY = 'sprinkle_looker_scores_sync_time';
+const STORAGE_SYNC_TS_KEY = 'sprinkle_looker_scores_sync_ts';
+const LOOKER_AUTO_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
 const SPREADSHEET_ID = '1GdiQEkdAUT8JLMQEnaFOlV6o5goWm2j_v1HXney7hZc';
 const GID_LOOKER_SCORES = '2115397650';
 
@@ -41,15 +43,19 @@ export default function LookerScoresView() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
-  // Load cached CSV from IndexedDB on mount
+  // Load cached CSV from IndexedDB on mount and auto-refresh silently if stale (>5 min)
   useEffect(() => {
     async function loadCache() {
       try {
         const cached = await idbGetItem(STORAGE_KEY);
         const time = await idbGetItem(STORAGE_SYNC_TIME_KEY);
+        const lastTs = parseInt(localStorage.getItem(STORAGE_SYNC_TS_KEY) || '0', 10) || 0;
         if (cached) {
           setCsvText(cached);
           if (time) setSyncTime(time);
+          if (!lastTs || (Date.now() - lastTs) >= LOOKER_AUTO_SYNC_COOLDOWN_MS) {
+            handleSync({ silent: true });
+          }
         } else {
           // If no cache, auto sync from Google Sheet
           handleSync();
@@ -62,13 +68,15 @@ export default function LookerScoresView() {
   }, []);
 
   // Sync from Google Sheets CSV Export
-  const handleSync = async () => {
-    setIsLoading(true);
-    setSyncStatus({ type: 'info', msg: 'กำลังดาวน์โหลดข้อมูล Looker ผลคะแนนแยกกลุ่มงาน...' });
+  const handleSync = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoading(true);
+      setSyncStatus({ type: 'info', msg: 'กำลังดาวน์โหลดข้อมูล Looker ผลคะแนนแยกกลุ่มงาน...' });
+    }
 
     try {
-      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID_LOOKER_SCORES}`;
-      const res = await fetch(url);
+      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID_LOOKER_SCORES}&_t=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
 
       const text = await res.text();
@@ -77,19 +85,27 @@ export default function LookerScoresView() {
       }
 
       const now = new Date().toLocaleString('th-TH');
+      const changed = text !== csvText;
       setCsvText(text);
       setSyncTime(now);
 
       await idbSetItem(STORAGE_KEY, text);
       await idbSetItem(STORAGE_SYNC_TIME_KEY, now);
+      try {
+        localStorage.setItem(STORAGE_SYNC_TS_KEY, String(Date.now()));
+      } catch (e) {}
 
-      setSyncStatus({ type: 'success', msg: `ซิงค์สำเร็จแล้ว (${(text.length / 1024).toFixed(1)} KB)` });
-      setTimeout(() => setSyncStatus({ type: '', msg: '' }), 4000);
+      if (!silent || changed) {
+        setSyncStatus({ type: 'success', msg: `ซิงค์สำเร็จแล้ว (${(text.length / 1024).toFixed(1)} KB)` });
+        setTimeout(() => setSyncStatus({ type: '', msg: '' }), 4000);
+      }
     } catch (err) {
       console.error('Sync failed:', err);
-      setSyncStatus({ type: 'error', msg: `ซิงค์ไม่สำเร็จ: ${err.message}` });
+      if (!silent) {
+        setSyncStatus({ type: 'error', msg: `ซิงค์ไม่สำเร็จ: ${err.message}` });
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -339,7 +355,7 @@ export default function LookerScoresView() {
                     ผลคะแนนแยกกลุ่มงาน 2569 (Looker Data)
                   </h1>
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    ครบ 18 สาขา 9 เดือน
+                    ครบ {parsedData.branches.length || 18} สาขา {parsedData.months.length || 9} เดือน
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -359,7 +375,7 @@ export default function LookerScoresView() {
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={handleSync}
+              onClick={() => handleSync({ silent: false })}
               disabled={isLoading}
               className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
             >

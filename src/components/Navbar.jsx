@@ -104,7 +104,7 @@ export default function Navbar({
               <button
                 onClick={onRefreshFromSheet}
                 disabled={isRefreshing}
-                title="ซิงค์ข้อมูลชีต"
+                title="ซิงค์ข้อมูลล่าสุดจาก Google Sheet ทันที (ระบบตรวจอัปเดตเดือนใหม่อัตโนมัติเมื่อเปิดหน้าเว็บ)"
                 className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <RotateCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin text-sky-500' : ''}`} />
