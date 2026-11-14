@@ -175,9 +175,13 @@ export function getAllMonths() {
   const monthMap = new Map();
   Object.keys(all).forEach(k => {
     const item = all[k];
-    if (!item) return;
-    const normKey = normalizeMonthKey(item.key || k);
-    const cleanLabel = formatThaiMonthLabel(item.label || item.key || k);
+    if (!item || !item.csv) return;
+    const rawKey = String(item.key || k);
+    // Ignore internal cache keys that do not represent monthly delivery tables
+    if (rawKey.startsWith('sprinkle_') || rawKey.includes('sync_time')) return;
+
+    const normKey = normalizeMonthKey(rawKey);
+    const cleanLabel = formatThaiMonthLabel(item.label || rawKey);
     monthMap.set(normKey, {
       ...item,
       key: normKey,
@@ -191,10 +195,19 @@ export function getAllMonths() {
 }
 
 export function getMonthData(monthKey) {
+  if (!monthKey || String(monthKey).startsWith('sprinkle_') || String(monthKey).includes('sync_time')) {
+    return {
+      key: '2569-09',
+      label: 'กันยายน 2569',
+      csv: ALL_18_BRANCHES_MONTH_2569_09,
+      note: 'ข้อมูลครบทั้ง 18 สาขาปฏิบัติการ (382 คัน)'
+    };
+  }
+
   const normKey = normalizeMonthKey(monthKey);
   const customMonths = getCustomMonths();
-  if (customMonths[normKey]) return customMonths[normKey];
-  if (customMonths[monthKey]) return customMonths[monthKey];
+  if (customMonths[normKey] && customMonths[normKey].csv) return customMonths[normKey];
+  if (customMonths[monthKey] && customMonths[monthKey].csv) return customMonths[monthKey];
 
   if (normKey === '2569-09' || monthKey === '2569-09') {
     return {
@@ -205,12 +218,12 @@ export function getMonthData(monthKey) {
     };
   }
 
-  if (PRELOADED_MONTHS[normKey]) return PRELOADED_MONTHS[normKey];
-  if (PRELOADED_MONTHS[monthKey]) return PRELOADED_MONTHS[monthKey];
+  if (PRELOADED_MONTHS[normKey] && PRELOADED_MONTHS[normKey].csv) return PRELOADED_MONTHS[normKey];
+  if (PRELOADED_MONTHS[monthKey] && PRELOADED_MONTHS[monthKey].csv) return PRELOADED_MONTHS[monthKey];
   
-  // Fallback to latest
+  // Fallback to latest valid month
   const all = getAllMonths();
-  return all[0] || null;
+  return all.find(m => m && m.csv) || all[0] || null;
 }
 
 export function getCustomMonths() {
@@ -231,11 +244,17 @@ export function getCustomMonths() {
     }
 
     const sanitized = {};
+    let hasBadKeys = false;
     Object.keys(parsed).forEach(k => {
       const item = parsed[k];
       if (!item) return;
-      const normKey = normalizeMonthKey(item.key || k);
-      const cleanLabel = formatThaiMonthLabel(item.label || item.key || k);
+      const rawKey = String(item.key || k);
+      if (rawKey.startsWith('sprinkle_') || rawKey.includes('sync_time') || !item.csv) {
+        hasBadKeys = true;
+        return;
+      }
+      const normKey = normalizeMonthKey(rawKey);
+      const cleanLabel = formatThaiMonthLabel(item.label || rawKey);
 
       sanitized[normKey] = {
         ...item,
@@ -243,6 +262,10 @@ export function getCustomMonths() {
         label: cleanLabel
       };
     });
+
+    if (hasBadKeys) {
+      trySyncToLocalStorage(sanitized);
+    }
 
     customMonthsCache = sanitized;
     return customMonthsCache;
@@ -435,7 +458,12 @@ export function getMonthQuickStats(csvText) {
 }
 
 export function getSelectedMonthKey() {
-  return localStorage.getItem(STORAGE_SELECTED_MONTH) || '2569-09';
+  const saved = localStorage.getItem(STORAGE_SELECTED_MONTH);
+  if (!saved || saved.startsWith('sprinkle_') || saved.includes('sync_time')) {
+    localStorage.setItem(STORAGE_SELECTED_MONTH, '2569-09');
+    return '2569-09';
+  }
+  return saved;
 }
 
 export function setSelectedMonthKey(key) {

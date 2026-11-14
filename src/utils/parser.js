@@ -207,13 +207,53 @@ export function buildDynamicColMap(rows) {
 }
 
 export function parseCSVData(csvText) {
+  if (!csvText || typeof csvText !== 'string' || csvText.trim().length === 0) {
+    return {
+      meta: {
+        title: 'ไม่มีข้อมูล',
+        branch: 'รามอินทรา',
+        month: 'รายงานประจำเดือน',
+        parsedAt: new Date().toISOString()
+      },
+      summary: {
+        totalVehicles: 0,
+        totalRewards: 0,
+        avgReward: 0,
+        qualifiedCount: 0,
+        withRewardCount: 0,
+        vehiclesWithDefects: 0,
+        totalPendingDeductions: 0
+      },
+      topDefects: [],
+      vehicles: []
+    };
+  }
+
   const result = Papa.parse(csvText, {
     skipEmptyLines: false,
   });
 
   const rows = result.data;
   if (!rows || rows.length < 4) {
-    throw new Error('รูปแบบไฟล์ไม่ถูกต้อง หรือข้อมูลไม่เพียงพอ');
+    return {
+      meta: {
+        title: 'ไม่มีข้อมูล',
+        branch: 'รามอินทรา',
+        month: 'รายงานประจำเดือน',
+        parsedAt: new Date().toISOString()
+      },
+      summary: {
+        totalVehicles: 0,
+        totalRewards: 0,
+        avgReward: 0,
+        qualifiedCount: 0,
+        withRewardCount: 0,
+        vehiclesWithDefects: 0,
+        totalPendingDeductions: 0
+      },
+      topDefects: [],
+      vehicles: []
+    };
   }
 
   const title = cleanText(rows[0][0]) || 'รายงานผลคะแนนรางวัลมาตรฐานจัดส่ง';

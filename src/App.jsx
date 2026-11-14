@@ -47,26 +47,41 @@ export default function App() {
     }
   });
 
-  // Current selected month
-  const [selectedMonthKey, setSelectedMonthState] = useState(() => getSelectedMonthKey());
+  // Current selected month (with auto-healing against non-month keys)
+  const [selectedMonthKey, setSelectedMonthState] = useState(() => {
+    const k = getSelectedMonthKey();
+    if (!k || String(k).startsWith('sprinkle_') || String(k).includes('sync_time')) {
+      setSelectedMonthKey('2569-09');
+      return '2569-09';
+    }
+    return k;
+  });
   const [allMonthsList, setAllMonthsList] = useState(() => getAllMonths());
 
   // Active view tab (Desktop)
   const [activeTab, setActiveTab] = useState('single'); // 'single', 'vehicles', 'analytics'
   const [viewMode, setViewMode] = useState('grid'); // 'grid', 'table'
 
-  // Current Month Data
+  // Current Month Data (guaranteed to always return valid object with csv)
   const currentMonthObj = useMemo(() => {
-    return getMonthData(selectedMonthKey) || allMonthsList[0];
+    const found = getMonthData(selectedMonthKey);
+    if (found && found.csv) return found;
+    const fallback = allMonthsList.find(m => m && m.csv) || allMonthsList[0] || { key: '2569-09', csv: '' };
+    return fallback;
   }, [selectedMonthKey, allMonthsList]);
 
-  // Parse CSV for current month
+  // Parse CSV for current month safely without breaking
   const data = useMemo(() => {
     try {
-      return parseCSVData(currentMonthObj.csv);
+      if (currentMonthObj && currentMonthObj.csv) {
+        return parseCSVData(currentMonthObj.csv);
+      }
+      const fallback = allMonthsList.find(m => m && m.csv);
+      return fallback ? parseCSVData(fallback.csv) : parseCSVData('');
     } catch (err) {
       console.error('Parse error:', err);
-      return parseCSVData(allMonthsList[0].csv);
+      const fallback = allMonthsList.find(m => m && m.csv);
+      return fallback ? parseCSVData(fallback.csv) : parseCSVData('');
     }
   }, [currentMonthObj, allMonthsList]);
 
@@ -156,6 +171,9 @@ export default function App() {
 
   // Month select handler
   const handleSelectMonth = (key) => {
+    if (!key || String(key).startsWith('sprinkle_') || String(key).includes('sync_time')) {
+      return;
+    }
     setSelectedMonthState(key);
     setSelectedMonthKey(key);
     showNotification(`สลับข้อมูลเป็นเดือน: ${getMonthData(key)?.label || key}`, 'info');
