@@ -1,14 +1,16 @@
-// Month data manager supporting preloaded Looker 69 months, user-uploaded months,
+// Month data manager supporting preloaded detailed monthly sheets (01-2569 .. 09-2569), user-uploaded months,
 // and high-capacity IndexedDB storage for saving all 18 branches across multiple months without 5MB quota errors.
 import { PRELOADED_MONTHS } from '../data/allMonthsData.js';
 import { idbSaveMonth, idbGetAllMonths, idbDeleteMonth } from './idbStorage.js';
 import Papa from 'papaparse';
 import { isLookerFormat, buildLookerColMap, splitLookerCsvByMonth, LOOKER_GID } from './lookerParser.js';
+import { normalizeDetailedSheetRows } from './parser.js';
+import { extractMonthlySheetsFromBuffer, MASTER_SPREADSHEET_ID } from './sheetWorkbookSync.js';
 
 const STORAGE_CUSTOM_MONTHS = 'sprinkle_custom_months';
 const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
-const STORAGE_LOOKER_VERSION = 'sprinkle_looker_clean_reset_v1';
-const LOOKER_CLEAN_VERSION = 'looker69_clean_v1';
+const STORAGE_LOOKER_VERSION = 'sprinkle_full_sheets69_reset_v2';
+const LOOKER_CLEAN_VERSION = 'sheets69_full_v2';
 
 // In-memory cache for fast synchronous access
 let customMonthsCache = null;
@@ -120,6 +122,7 @@ export async function clearAndResetToLookerMonths({ dispatch = true } = {}) {
   localStorage.removeItem(STORAGE_CUSTOM_MONTHS);
   localStorage.removeItem('sprinkle_current_data');
   localStorage.removeItem('sprinkle_daily_history');
+  localStorage.removeItem('sprinkle_looker_clean_reset_v1');
   const latestKey = getLatestPreloadedKey();
   localStorage.setItem(STORAGE_SELECTED_MONTH, latestKey);
   localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
@@ -223,7 +226,51 @@ export async function syncLookerMonthsToStorage(lookerCsvText) {
   return { syncedKeys, monthsMap };
 }
 
-// Get list of all available months (Preloaded Looker 69 + User uploaded/synced)
+/**
+ * Syncs all detailed monthly sheets (`01-2569` .. `09-2569`+) parsed from an XLSX ArrayBuffer
+ * of the master Google Sheet into IndexedDB / storage.
+ */
+export async function syncWorkbookMonthsToStorage(arrayBuffer) {
+  const monthsMap = extractMonthlySheetsFromBuffer(arrayBuffer);
+  const syncedKeys = Object.keys(monthsMap).sort();
+  if (syncedKeys.length === 0) {
+    return { syncedKeys: [], monthsMap: {} };
+  }
+
+  const customMonths = getCustomMonths();
+  const now = new Date().toISOString();
+
+  for (const key of syncedKeys) {
+    const item = monthsMap[key];
+    const monthObj = {
+      key,
+      label: item.label,
+      sheetName: item.sheetName,
+      spreadsheetId: MASTER_SPREADSHEET_ID,
+      source: 'sheets_01_09',
+      csv: item.csv,
+      uploadedAt: now,
+      note: `ข้อมูลครบทั้ง ${item.branches.length} สาขา จากแผ่นงาน ${item.sheetName} (${item.vehicleCount} คัน, รางวัลรวม ฿${item.totalReward.toLocaleString()})`
+    };
+    customMonths[key] = monthObj;
+    await idbSaveMonth(monthObj);
+  }
+
+  customMonthsCache = customMonths;
+  trySyncToLocalStorage(customMonths);
+  localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
+
+  const latestSyncedKey = syncedKeys[syncedKeys.length - 1];
+  const currentSelected = getSelectedMonthKey();
+  if (!syncedKeys.includes(currentSelected) && latestSyncedKey) {
+    setSelectedMonthKey(latestSyncedKey);
+  }
+
+  window.dispatchEvent(new Event('sprinkle_months_updated'));
+  return { syncedKeys, monthsMap };
+}
+
+// Get list of all available months (Preloaded 01-2569..09-2569 + User uploaded/synced)
 export function getAllMonths() {
   const customMonths = getCustomMonths();
 
@@ -423,19 +470,29 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
       combinedRows = [existingRows[0], ...Array.from(vehicleMap.values())];
       branchesFound = Array.from(new Set(Array.from(vehicleMap.values()).map(r => (r[col.branch] || '').toString().trim()).filter(Boolean)));
     } else {
-      // Legacy 170-col merge
-      const rawHeaderRows = existingRows.length >= 3 ? existingRows.slice(0, 3) : newRows.slice(0, 3);
+      // Full 170-col merge (normalize raw sheet numbering/No1/No2 headers if present)
+      const normExisting = normalizeDetailedSheetRows(existingRows);
+      const normNew = normalizeDetailedSheetRows(newRows);
+      const rawHeaderRows = normExisting.length >= 3 ? normExisting.slice(0, 3) : normNew.slice(0, 3);
       const headerRows = rawHeaderRows.map(r => trimRowColumns(r));
 
-      const existingVehicles = existingRows.slice(3).filter(r => {
-        const c = (r[3] || '').toString().trim();
-        return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-      });
+      const sliceBeforeSummary = (rowsArr) => {
+        const out = [];
+        for (let i = 3; i < rowsArr.length; i++) {
+          const r = rowsArr[i];
+          if (!r) continue;
+          const col8 = String(r[8] || '').trim().toLowerCase();
+          if (col8 === 'sum' || col8.includes('ข้อมูลจาก link') || col8.includes('รวม')) break;
+          const c = (r[3] || '').toString().trim();
+          if (c && c.length >= 3 && !isNaN(parseInt(c[0], 10))) {
+            out.push(r);
+          }
+        }
+        return out;
+      };
 
-      const newVehicles = newRows.slice(3).filter(r => {
-        const c = (r[3] || '').toString().trim();
-        return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-      });
+      const existingVehicles = sliceBeforeSummary(normExisting);
+      const newVehicles = sliceBeforeSummary(normNew);
 
       const vehicleKey = (r) => `${(r[0] || '').toString().trim()}_${(r[3] || '').toString().trim()}`;
       const vehicleMap = new Map();
@@ -529,16 +586,23 @@ export function getMonthQuickStats(csvText) {
       };
     }
 
-    const vehicles = rows.slice(3).filter(r => {
+    const normRows = normalizeDetailedSheetRows(rows);
+    const vehicles = [];
+    for (let i = 3; i < normRows.length; i++) {
+      const r = normRows[i];
+      if (!r) continue;
+      const col8 = String(r[8] || '').trim().toLowerCase();
+      if (col8 === 'sum' || col8.includes('ข้อมูลจาก link') || col8.includes('รวม')) break;
       const c = (r[3] || '').toString().trim();
-      return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-    });
+      if (c && c.length >= 3 && !isNaN(parseInt(c[0], 10))) {
+        vehicles.push(r);
+      }
+    }
     const branches = Array.from(new Set(vehicles.map(r => (r[0] || '').toString().trim()).filter(Boolean))).sort();
-    
-    // Total reward is typically around column 140 or colMap totalReward
+
+    // Total reward column from row 2 ('รวมเงินรางวัล')
     let totalReward = 0;
-    // Inspect row 2 to find index of 'รวมเงินรางวัล'
-    const h2 = rows[2] || [];
+    const h2 = normRows[2] || [];
     let rewardCol = h2.findIndex(c => String(c).trim() === 'รวมเงินรางวัล');
     if (rewardCol === -1) rewardCol = 140;
 

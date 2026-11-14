@@ -18,7 +18,7 @@ import PercentM79View from './components/PercentM79View';
 import LookerScoresView from './components/LookerScoresView';
 import UserApprovalModal from './components/UserApprovalModal';
 import AdminDataManagerModal from './components/AdminDataManagerModal';
-import { LOOKER_CSV_URL } from './utils/lookerParser';
+import { MASTER_XLSX_URL } from './utils/sheetWorkbookSync';
 import { useIsMobile } from './hooks/useIsMobile';
 import { parseCSVData } from './utils/parser';
 import { 
@@ -27,6 +27,7 @@ import {
   saveNewMonth, 
   mergeBranchIntoMonth,
   syncLookerMonthsToStorage,
+  syncWorkbookMonthsToStorage,
   clearAndResetToLookerMonths,
   getSelectedMonthKey, 
   setSelectedMonthKey,
@@ -217,24 +218,24 @@ export default function App() {
     }
   };
 
-  // Sync all months & all 18 branches live from Looker 69 Google Sheet
+  // Sync all months & all 18 branches live from Master Google Sheet (01-2569 .. latest)
   const handleRefreshCurrentMonth = async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch(`${LOOKER_CSV_URL}&_t=${Date.now()}`);
+      const res = await fetch(`${MASTER_XLSX_URL}&_t=${Date.now()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
+      const buffer = await res.arrayBuffer();
 
-      const { syncedKeys } = await syncLookerMonthsToStorage(text);
+      const { syncedKeys } = await syncWorkbookMonthsToStorage(buffer);
       if (syncedKeys.length === 0) {
-        throw new Error('ไม่พบข้อมูลเดือนในแผ่นงาน Looker ผลคะแนนแยกกลุ่มงาน69');
+        throw new Error('ไม่พบแผ่นงานรายเดือน (เช่น 01-2569 – 09-2569) ในไฟล์ Google Sheet');
       }
 
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(getSelectedMonthKey());
-      showNotification(`ซิงค์ข้อมูลล่าสุดครบ ${syncedKeys.length} เดือน จาก Looker 69 สำเร็จแล้ว!`, 'success');
+      showNotification(`ซิงค์ข้อมูลล่าสุดครบ ${syncedKeys.length} เดือน (${syncedKeys[0]} – ${syncedKeys[syncedKeys.length - 1]}) สำเร็จแล้ว!`, 'success');
     } catch (err) {
-      showNotification('ไม่สามารถซิงค์จาก Looker 69 ได้: ' + err.message, 'error');
+      showNotification('ไม่สามารถซิงค์จาก Google Sheet ได้: ' + err.message, 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -246,7 +247,7 @@ export default function App() {
       const latestKey = await clearAndResetToLookerMonths({ dispatch: true });
       setAllMonthsList(getAllMonths());
       setSelectedMonthState(latestKey);
-      showNotification('ล้างแคชข้อมูลเก่าทั้งหมด และรีเซ็ตเป็นชุดข้อมูล Looker 69 เรียบร้อยแล้ว', 'success');
+      showNotification('ล้างแคชข้อมูลเก่าทั้งหมด และรีเซ็ตเป็นชุดข้อมูลรายเดือน (01-2569 – ล่าสุด) เรียบร้อยแล้ว', 'success');
     } finally {
       setIsRefreshing(false);
     }

@@ -70,7 +70,7 @@ export default function AdminDataManagerModal({
     setIsProcessing(true);
     try {
       await onSyncAllFromLooker();
-      showNotice('ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Looker 69 เรียบร้อยแล้ว!', 'success');
+      showNotice('ซิงค์ข้อมูลทุกเดือนทุกสาขา (01-2569 – ล่าสุด) เรียบร้อยแล้ว!', 'success');
     } catch (err) {
       showNotice('เกิดข้อผิดพลาดในการซิงค์: ' + err.message, 'error');
     } finally {
@@ -80,11 +80,11 @@ export default function AdminDataManagerModal({
 
   const handleResetLookerClick = async () => {
     if (!onResetToLooker) return;
-    if (!window.confirm('ต้องการล้างแคชข้อมูลที่เคยลงไว้ทั้งหมดในเครื่อง และรีเซ็ตเป็นข้อมูลชุด Looker 69 ใช่หรือไม่?')) return;
+    if (!window.confirm('ต้องการล้างแคชข้อมูลที่เคยลงไว้ทั้งหมดในเครื่อง และรีเซ็ตเป็นข้อมูลรายเดือนล่าสุด (01-2569 – ล่าสุด) ใช่หรือไม่?')) return;
     setIsProcessing(true);
     try {
       await onResetToLooker();
-      showNotice('ล้างแคชข้อมูลเก่าและรีเซ็ตเป็น Looker 69 เรียบร้อยแล้ว', 'info');
+      showNotice('ล้างแคชข้อมูลเก่าและรีเซ็ตเป็นชุดข้อมูลรายเดือนหลักเรียบร้อยแล้ว', 'info');
     } catch (err) {
       showNotice('เกิดข้อผิดพลาด: ' + err.message, 'error');
     } finally {
@@ -126,7 +126,7 @@ export default function AdminDataManagerModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                จัดการฐานข้อมูลจากแผ่นงาน "Looker ผลคะแนนแยกกลุ่มงาน69" ครบทั้ง 18 สาขา และอัปโหลดข้อมูลรายเดือน
+                จัดการฐานข้อมูลจากแผ่นงานรายเดือน 01-2569 – 09-2569 (18 สาขา รายละเอียดครบทุกข้อ) และอัปโหลดข้อมูลรายเดือน
               </p>
             </div>
           </div>
@@ -229,22 +229,22 @@ export default function AdminDataManagerModal({
           {activeTab === 'months' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>คลิก "เลือกดูเดือนนี้" เพื่อสลับข้อมูล หรือกดซิงค์จาก Looker 69 เพื่อดึงข้อมูลทุกเดือนทุกสาขาล่าสุด</span>
+                <span>คลิก "เลือกดูเดือนนี้" เพื่อสลับข้อมูล หรือกดซิงค์เพื่อดึงข้อมูลทุกเดือนทุกสาขาล่าสุด</span>
                 <span className="font-semibold text-slate-700">ทั้งหมด {monthsList.length} เดือน</span>
               </div>
 
-              {/* Looker 69 Live Sync & Reset Banner */}
+              {/* Master Sheets (01-2569 .. latest) Live Sync & Reset Banner */}
               <div className="bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-700 text-white rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    <h4 className="font-bold text-sm">ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Looker 69 (Google Sheet)</h4>
+                    <h4 className="font-bold text-sm">ซิงค์ข้อมูลทุกเดือนทุกสาขาจาก Google Sheet (01-2569 – ล่าสุด)</h4>
                     <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">
-                      49 คอลัมน์ • 18 สาขา
+                      รายละเอียดครบทุกข้อ • 18 สาขา
                     </span>
                   </div>
                   <p className="text-xs text-sky-100 leading-relaxed">
-                    ดึงข้อมูลล่าสุดจากแผ่นงาน <strong>"Looker ผลคะแนนแยกกลุ่มงาน69"</strong> ครบทั้ง 18 สาขาปฏิบัติการ และอัปเดตทุกเดือน (`2569-01` – ปัจจุบัน) พร้อมกันทันที (กันยายน 2569: 382 คัน, รางวัลรวม ฿846,180)
+                    ดึงข้อมูลล่าสุดจากแผ่นงานรายเดือน <strong>01-2569 ถึงล่าสุด</strong> ครบทั้ง 18 สาขาปฏิบัติการ พร้อมรายละเอียดคะแนนทุกข้อย่อย 1.1–4.7, 5.1–5.2, เงินพิเศษ และยอดหัก/รอหัก (กันยายน 2569: 382 คัน, รางวัลรวม ฿846,180)
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
@@ -254,12 +254,12 @@ export default function AdminDataManagerModal({
                     className="px-4 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <RotateCw className={`w-4 h-4 text-sky-600 ${busy ? 'animate-spin' : ''}`} />
-                    <span>{busy ? 'กำลังซิงค์...' : 'ซิงค์ทุกเดือนจาก Looker'}</span>
+                    <span>{busy ? 'กำลังซิงค์...' : 'ซิงค์ทุกเดือนล่าสุด'}</span>
                   </button>
                   <button
                     onClick={handleResetLookerClick}
                     disabled={busy}
-                    title="ล้างข้อมูลแคชที่เคยบันทึกค้างและรีเซ็ตเป็นชุด Looker 69"
+                    title="ล้างข้อมูลแคชที่เคยบันทึกค้างและรีเซ็ตเป็นชุดข้อมูลรายเดือนหลัก"
                     className="px-3 py-2.5 bg-white/15 hover:bg-white/25 text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -348,7 +348,7 @@ export default function AdminDataManagerModal({
                         </button>
 
                         {/* Delete custom uploaded month */}
-                        {m.key.startsWith('month_') || (m.uploadedAt && m.source !== 'looker69') ? (
+                        {m.key.startsWith('month_') || (m.uploadedAt && m.source !== 'looker69' && m.source !== 'sheets_01_09') ? (
                           <button
                             onClick={() => handleDeleteMonth(m.key, m.label)}
                             title="ลบเดือนนี้"

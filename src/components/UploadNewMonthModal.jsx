@@ -20,13 +20,18 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { parseCSVData, splitLookerCsvByMonth, LOOKER_CSV_URL } from '../utils/parser';
+import { parseCSVData, splitLookerCsvByMonth, normalizeDetailedSheetRows } from '../utils/parser';
+import { MASTER_LATEST_SHEET_URL } from '../utils/sheetWorkbookSync';
 import { formatThaiMonthLabel, normalizeMonthKey, mergeBranchIntoMonth, saveNewMonth } from '../utils/monthStorage';
 
 function isLikelyMonthSheet(name) {
   if (!name) return false;
-  const s = String(name).trim().toLowerCase();
-  if (/pivot|ตาราง|summary|avg|sheet\d+|temp|test|template|ว่าง/i.test(s)) {
+  const s = String(name).trim();
+  if (/^\d{2}-25\d{2}$/.test(s) || /^25\d{2}-\d{2}$/.test(s)) {
+    return true;
+  }
+  const lower = s.toLowerCase();
+  if (/pivot|ตาราง|summary|avg|sheet\d+|temp|test|template|ว่าง|looker|m7-9|เปอร์เซ็นต์|ยอดส่ง|ผลงาน|รวมมาตรฐาน/i.test(lower)) {
     return false;
   }
   return true;
@@ -77,8 +82,8 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
           const validSheets = names.filter(isLikelyMonthSheet);
           setCheckedSheets(validSheets.length > 0 ? validSheets : names);
 
-          // Pick the best sheet: prefer 2569-09 or latest or first
-          const targetSheet = names.find(s => s === '2569-09') || names[names.length - 1] || names[0];
+          // Pick the best sheet: prefer 09-2569 / 2569-09 or latest valid month sheet
+          const targetSheet = names.find(s => s === '09-2569' || s === '2569-09') || validSheets[validSheets.length - 1] || names[names.length - 1] || names[0];
           setSelectedSheetName(targetSheet);
 
           if (targetSheet && wb.Sheets[targetSheet]) {
@@ -218,13 +223,20 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
           const text = XLSX.utils.sheet_to_csv(sheet);
           if (!text || text.trim().length < 50) return;
 
-          // Verify delivery car data exists in this sheet
+          // Verify delivery car data exists in this sheet (handling raw No1/No2/numbering header rows)
           const parsed = Papa.parse(text, { skipEmptyLines: false });
-          const rows = parsed.data || [];
-          const vehicles = rows.slice(3).filter(r => {
+          const normRows = normalizeDetailedSheetRows(parsed.data || []);
+          const vehicles = [];
+          for (let i = 3; i < normRows.length; i++) {
+            const r = normRows[i];
+            if (!r) continue;
+            const col8 = String(r[8] || '').trim().toLowerCase();
+            if (col8 === 'sum' || col8.includes('ข้อมูลจาก link') || col8.includes('รวม')) break;
             const c = (r[3] || '').toString().trim();
-            return c && c.length >= 3 && !isNaN(parseInt(c[0]));
-          });
+            if (c && c.length >= 3 && !isNaN(parseInt(c[0], 10))) {
+              vehicles.push(r);
+            }
+          }
 
           // Skip sheets without car rows (e.g. Pivot tables, summary notes, empty sheets)
           if (vehicles.length === 0) {
@@ -448,10 +460,10 @@ export default function UploadNewMonthModal({ onClose, onMonthAdded, currentUser
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSheetUrl(LOOKER_CSV_URL.replace('/export?format=csv&', '/edit?'))}
+                  onClick={() => setSheetUrl(MASTER_LATEST_SHEET_URL)}
                   className="py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors shrink-0"
                 >
-                  ใช้ลิงก์ Looker 69
+                  ใช้ลิงก์ชีต 09-2569 (หลัก)
                 </button>
               </div>
             </div>

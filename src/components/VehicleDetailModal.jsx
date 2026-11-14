@@ -457,6 +457,12 @@ export default function VehicleDetailModal({ vehicle, onClose, onPrint }) {
                     <span className="text-slate-600">รางวัลพิเศษ / อื่นๆ:</span>
                     <strong className="text-slate-800">฿{totals.specialBonus.toLocaleString()}</strong>
                   </div>
+                  {Boolean(totals.unhandledDeduction36) && (
+                    <div className="flex justify-between py-1.5 text-amber-800 bg-amber-50/70 px-2.5 rounded-lg border border-amber-200/80">
+                      <span>ปรับลดกรณีข้อ 3.6:</span>
+                      <strong>฿{totals.unhandledDeduction36.toLocaleString()}</strong>
+                    </div>
+                  )}
                   <div className="flex justify-between py-2 text-base font-bold bg-slate-50 px-3 rounded-lg border border-slate-200">
                     <span className="text-slate-900">รวมเงินรางวัลสุทธิ:</span>
                     <span className="text-emerald-600">฿{totals.totalReward.toLocaleString()}</span>

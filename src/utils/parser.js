@@ -29,6 +29,45 @@ export function cleanText(val) {
   return String(val).trim();
 }
 
+/**
+ * Normalizes raw 170-col Google Sheet / Excel exports so row[0] is title,
+ * row[1] is section headers (H1), row[2] is column labels (H2), row[3+] is vehicle rows,
+ * and col[0] starts at 'สาขา' (stripping leading 'No1'/'No2' & '1,2,3...' index rows if present).
+ */
+export function normalizeDetailedSheetRows(rows) {
+  if (!Array.isArray(rows) || rows.length < 4) return rows || [];
+
+  let hdrIdx = -1;
+  let branchCol = 0;
+
+  for (let i = 0; i < Math.min(6, rows.length); i++) {
+    const r = rows[i] || [];
+    const bIdx = r.findIndex(c => cleanText(c) === 'สาขา');
+    const hasCarCol = r.some(c => cleanText(c) === 'เบอร์รถ');
+    if (bIdx !== -1 && hasCarCol) {
+      hdrIdx = i;
+      branchCol = bIdx;
+      break;
+    }
+  }
+
+  // Fallback for pre-stripped sheets or sheets whose header row uses partial labels
+  if (hdrIdx === -1) {
+    return rows;
+  }
+  if (hdrIdx === 2 && branchCol === 0) {
+    return rows;
+  }
+
+  const startRow = Math.max(0, hdrIdx - 2);
+  const titleRow = hdrIdx >= 2 ? (rows[startRow] || []) : [''];
+  const h1Row = hdrIdx >= 1 ? (rows[hdrIdx - 1] || []) : [];
+  const h2Row = rows[hdrIdx] || [];
+  const dataRows = rows.slice(hdrIdx + 1);
+
+  return [titleRow, h1Row, h2Row, ...dataRows].map(r => (r || []).slice(branchCol));
+}
+
 function getColNum(r, colIdx) {
   if (colIdx === null || colIdx === undefined || colIdx < 0) return 0;
   return cleanNum(r[colIdx]);
@@ -125,6 +164,9 @@ export function buildDynamicColMap(rows) {
       s2 === 'รวมเงินรางวัล' ||
       s2 === 'รวมคะแนนทั้งหมด' ||
       s2 === 'เปอร์เซ็นต์ทั้งหมด' ||
+      s2.includes('เงินพิเศษ') ||
+      s2.includes('รางวัลพิเศษ') ||
+      s2.includes('กรณีมีข้อ 3.6') ||
       s2 === 'คะแนนรวม 1' || s2 === 'คะแนนรวม 2' || s2 === 'คะแนนรวม 3' || s2 === 'คะแนนรวม 4' ||
       s2 === 'เปอร์เซ็นต์ 1' || s2 === 'เปอร์เซ็นต์ 2' || s2 === 'เปอร์เซ็นต์ 3' || s2 === 'เปอร์เซ็นต์ 4' ||
       s2 === 'รางวัล 1' || s2 === 'รางวัล 2' || s2 === 'รางวัล 3' || s2 === 'รางวัล 4' ||
@@ -143,7 +185,7 @@ export function buildDynamicColMap(rows) {
       if (s2 === 'เปอร์เซ็นต์ทั้งหมด' && colMap.totalPercent === null) colMap.totalPercent = c;
       if (s2.includes('รอหัก') && colMap.pendingDeduction === null) colMap.pendingDeduction = c;
       if (s2.includes('กรณีมีข้อ 3.6') && colMap.unhandledDeduction36 === null) colMap.unhandledDeduction36 = c;
-      if (s2.includes('รางวัลพิเศษ') && colMap.specialBonus === null) colMap.specialBonus = c;
+      if ((s2.includes('รางวัลพิเศษ') || s2.includes('เงินพิเศษ')) && colMap.specialBonus === null) colMap.specialBonus = c;
 
       // Meta & Levels
       if (s2.startsWith('เขต') && colMap.zone === null) colMap.zone = c;
@@ -192,8 +234,8 @@ export function buildDynamicColMap(rows) {
       continue;
     }
 
-    // 3.6: ตรวจสอบสิ่งปลอมปน (กำจัดได้, กำจัดไม่ได้, ไม่ร่วมมือ)
-    if (s2.includes('3.6') || s1.includes('3.6')) {
+    // 3.6: ตรวจสอบสิ่งปลอมปน (กำจัดได้, กำจัดไม่ได้, ไม่ร่วมมือ) — avoid matching typo 'คะแนน 3.6' under 3.8
+    if ((s1.includes('3.6') || s2.includes('3.6')) && !currentH1.startsWith('3.8')) {
       if (s2.includes('กำจัดได้') || s2.includes('3.6.1')) colMap.items['3.6'].cleanable = c;
       else if (s2.includes('กำจัดไม่ได้') || s2.includes('3.6.2')) colMap.items['3.6'].uncleanable = c;
       else if ((s2.includes('ไม่') && s2.includes('ร่วมมือ')) || s2.includes('3.6.3')) colMap.items['3.6'].uncooperative = c;
@@ -204,6 +246,8 @@ export function buildDynamicColMap(rows) {
 
     // General matching by code in H2 or H1
     for (const code of itemCodes) {
+      if (code === '2.10' && currentH1.startsWith('2.5')) continue;
+      if (code === '3.6' && currentH1.startsWith('3.8')) continue;
       if (s2.includes(code) || currentH1.startsWith(code)) {
         if (s2.includes('ผลงาน') && colMap.items[code].result === undefined) colMap.items[code].result = c;
         else if (s2.includes('คะแนน') && colMap.items[code].score === undefined) colMap.items[code].score = c;
@@ -249,10 +293,11 @@ export function parseCSVData(csvText) {
     skipEmptyLines: false,
   });
 
-  const rows = result.data;
-  if (isLookerFormat(rows)) {
-    return parseLookerCSVData(rows, generateDefects);
+  const rawRows = result.data;
+  if (isLookerFormat(rawRows)) {
+    return parseLookerCSVData(rawRows, generateDefects);
   }
+  const rows = normalizeDetailedSheetRows(rawRows);
   if (!rows || rows.length < 4) {
     return {
       meta: {
