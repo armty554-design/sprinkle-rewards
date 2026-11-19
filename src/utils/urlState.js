@@ -37,9 +37,20 @@ const PATH_TAB_ALIASES = {
 };
 
 /**
+ * Reads Vite's statically replaced import.meta.env.BASE_URL safely (with Node ESM fallback).
+ */
+export function getDefaultBasePath() {
+  try {
+    return import.meta.env.BASE_URL || '/';
+  } catch {
+    return '/';
+  }
+}
+
+/**
  * Normalizes Vite BASE_URL so both root ('/') and subpath ('/sprinkle-rewards/') deployments work cleanly.
  */
-export function normalizeBasePath(basePath = import.meta?.env?.BASE_URL || '/') {
+export function normalizeBasePath(basePath = getDefaultBasePath()) {
   let b = String(basePath || '/').trim();
   if (!b.startsWith('/')) b = `/${b}`;
   if (!b.endsWith('/')) b = `${b}/`;
@@ -52,7 +63,7 @@ export function normalizeBasePath(basePath = import.meta?.env?.BASE_URL || '/') 
 export function parseUrlState(
   search = '',
   pathname = '/',
-  basePath = import.meta?.env?.BASE_URL || '/'
+  basePath = getDefaultBasePath()
 ) {
   const params = new URLSearchParams(search || '');
   const normBase = normalizeBasePath(basePath);
@@ -205,7 +216,7 @@ export function sanitizeUrlStateForUser(
 export function buildCanonicalUrl(
   state = {},
   user = null,
-  basePath = import.meta?.env?.BASE_URL || '/'
+  basePath = getDefaultBasePath()
 ) {
   const normBase = normalizeBasePath(basePath);
   const canManage = isManagementRole(user);
