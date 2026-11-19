@@ -9,8 +9,8 @@ import { extractMonthlySheetsFromBuffer, MASTER_SPREADSHEET_ID, MASTER_XLSX_URL 
 
 const STORAGE_CUSTOM_MONTHS = 'sprinkle_custom_months';
 const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
-const STORAGE_LOOKER_VERSION = 'sprinkle_full_sheets69_reset_v2';
-const LOOKER_CLEAN_VERSION = 'sheets69_full_v2';
+const STORAGE_LOOKER_VERSION = 'sprinkle_full_sheets69_reset_v3_m10';
+const LOOKER_CLEAN_VERSION = 'sheets69_full_v3_m10';
 const STORAGE_LAST_AUTO_SYNC = 'sprinkle_last_auto_sync_ts';
 export const AUTO_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -138,7 +138,7 @@ function trySyncToLocalStorage(monthsObj) {
 
 function getLatestPreloadedKey() {
   const keys = Object.keys(PRELOADED_MONTHS).sort();
-  return keys[keys.length - 1] || '2569-09';
+  return keys[keys.length - 1] || '2569-10';
 }
 
 /**
@@ -162,6 +162,7 @@ export async function clearAndResetToLookerMonths({ dispatch = true } = {}) {
   localStorage.removeItem('sprinkle_current_data');
   localStorage.removeItem('sprinkle_daily_history');
   localStorage.removeItem('sprinkle_looker_clean_reset_v1');
+  localStorage.removeItem('sprinkle_full_sheets69_reset_v2');
   localStorage.removeItem(STORAGE_LAST_AUTO_SYNC);
   const latestKey = getLatestPreloadedKey();
   localStorage.setItem(STORAGE_SELECTED_MONTH, latestKey);
@@ -340,12 +341,17 @@ export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew =
   localStorage.setItem(STORAGE_LAST_AUTO_SYNC, String(syncedAt));
 
   const latestSyncedKey = syncedKeys[syncedKeys.length - 1];
+  const allAvailableKeys = new Set(getAllMonths().map(m => m.key));
   const currentSelected = getSelectedMonthKey();
   const newestAddedKey = addedKeys.length > 0 ? addedKeys[addedKeys.length - 1] : '';
 
-  if (newestAddedKey && autoSelectNew && (!syncedKeys.includes(currentSelected) || currentSelected === prevLatest || newestAddedKey > currentSelected)) {
+  if (
+    newestAddedKey &&
+    autoSelectNew &&
+    (!allAvailableKeys.has(currentSelected) || currentSelected === prevLatest || newestAddedKey > currentSelected)
+  ) {
     setSelectedMonthKey(newestAddedKey);
-  } else if (!syncedKeys.includes(currentSelected) && latestSyncedKey) {
+  } else if (!allAvailableKeys.has(currentSelected) && latestSyncedKey) {
     setSelectedMonthKey(latestSyncedKey);
   }
 

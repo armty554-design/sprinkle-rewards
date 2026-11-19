@@ -105,7 +105,7 @@ export default function App() {
     }
     const k = getSelectedMonthKey();
     if (!k || String(k).startsWith('sprinkle_') || String(k).includes('sync_time')) {
-      const fallbackKey = months[0]?.key || '2569-09';
+      const fallbackKey = months[0]?.key || '2569-10';
       setSelectedMonthKey(fallbackKey);
       return fallbackKey;
     }
@@ -128,7 +128,7 @@ export default function App() {
   const currentMonthObj = useMemo(() => {
     const found = getMonthData(selectedMonthKey);
     if (found && found.csv) return found;
-    const fallback = allMonthsList.find(m => m && m.csv) || allMonthsList[0] || { key: '2569-09', csv: '' };
+    const fallback = allMonthsList.find(m => m && m.csv) || allMonthsList[0] || { key: '2569-10', csv: '' };
     return fallback;
   }, [selectedMonthKey, allMonthsList]);
 

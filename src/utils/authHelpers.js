@@ -69,7 +69,7 @@ export function filterVehiclesForUser(vehicles = [], user) {
 export function resolveVehiclePositionRole(vehicle) {
   const pos = String(vehicle?.general?.position || '').trim();
   const carType = String(vehicle?.general?.carType || '').trim();
-  if (pos === 'ผู้ประกอบการ' || carType.includes('ผปก')) {
+  if (pos === 'ผู้ประกอบการ' || pos === 'พี่สปริงเคิล' || carType.includes('ผปก')) {
     return { role: 'contractor', roleLabel: 'ผู้ประกอบการ (ผปก.)' };
   }
   return { role: 'driver', roleLabel: 'พนักงานขับรถ' };
