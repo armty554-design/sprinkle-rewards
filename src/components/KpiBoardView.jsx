@@ -16,10 +16,12 @@ import {
   Layers,
   CheckCircle2,
   ArrowUpDown,
+  Package,
 } from 'lucide-react';
 import {
   KPI_GROUPS,
   KPI_METRICS,
+  VOLUME_METRIC,
   METRIC_BY_KEY,
   extractVehicleKpiRow,
   aggregateKpiRows,
@@ -151,6 +153,7 @@ export default function KpiBoardView({
   // Ensure selected metric is visible when user picks a group tab
   const handleSelectChartGroup = (gid) => {
     setChartGroupFilter(gid);
+    setHoveredBarIdx(null);
     if (gid !== 'all' && activeMetric.group !== gid) {
       const first = KPI_METRICS.find((m) => m.group === gid);
       if (first) setSelectedMetricKey(first.key);
@@ -162,6 +165,40 @@ export default function KpiBoardView({
 
   const mainChartBars = useMemo(() => {
     const m = activeMetric;
+
+    if (m.key === 'VOLUME') {
+      if (isShowingBranchesChart) {
+        const items = agg.branchSummaries.map((b) => ({
+          id: b.branch,
+          label: b.branch,
+          subLabel: `${b.count} คัน • เฉลี่ย ${b.avgDelivered.toLocaleString()} ถัง/คัน (ผ่านเกณฑ์ ${b.qualifiedCount}/${b.count} คัน)`,
+          value: b.totalDelivered,
+          display: b.totalDelivered.toLocaleString(),
+          tier: b.avgDelivered >= 3800 ? 'blue' : b.avgDelivered >= 3000 ? 'green' : 'red',
+          isBranch: true,
+          branchName: b.branch,
+        }));
+        if (chartSort === 'desc') items.sort((a, b) => b.value - a.value);
+        else if (chartSort === 'asc') items.sort((a, b) => a.value - b.value);
+        else items.sort((a, b) => a.label.localeCompare(b.label, 'th'));
+        return items;
+      }
+
+      const items = activeRows.map((r) => ({
+        id: r.id,
+        label: r.carCode,
+        subLabel: `${r.fullName} (${r.branch} • ${r.isTruckS ? 'รถ S' : r.zone})`,
+        value: r.totalDelivered,
+        display: r.totalDelivered.toLocaleString(),
+        tier: r.totalDelivered >= 4000 ? 'blue' : r.totalDelivered >= 3000 ? 'green' : 'red',
+        vehicle: r.vehicle,
+      }));
+      if (chartSort === 'desc') items.sort((a, b) => b.value - a.value);
+      else if (chartSort === 'asc') items.sort((a, b) => a.value - b.value);
+      else items.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+      return selectedBranch === 'all' ? items.slice(0, 35) : items;
+    }
+
     if (isShowingBranchesChart) {
       const items = agg.branchSummaries
         .map((b) => {
@@ -169,7 +206,7 @@ export default function KpiBoardView({
           return {
             id: b.branch,
             label: b.branch,
-            subLabel: `${b.count} คัน`,
+            subLabel: `${b.count} คัน • ยอดส่ง ${b.totalDelivered.toLocaleString()} ถัง`,
             value: val,
             display: formatMetricValue(m, val),
             tier:
@@ -218,7 +255,7 @@ export default function KpiBoardView({
         return {
           id: r.id,
           label: r.carCode,
-          subLabel: `${r.fullName} (${r.branch} • ${r.isTruckS ? 'รถ S' : r.zone})`,
+          subLabel: `${r.fullName} (${r.branch} • ${r.isTruckS ? 'รถ S' : r.zone} • ส่ง ${r.totalDelivered.toLocaleString()} ถัง)`,
           value: cell?.isMissing ? null : cell?.value ?? null,
           display: cell?.display || '-',
           tier: cell?.tier || 'neutral',
@@ -334,14 +371,15 @@ export default function KpiBoardView({
           <div>
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
               <Activity className="w-3.5 h-3.5" />
-              <span>ตารางกราฟ KPI ผลงานรางวัลมาตรฐาน (ครบทั้ง 36 หัวข้อ)</span>
+              <span>ตารางกราฟ KPI ผลงานรางวัลมาตรฐาน (ครบทั้ง 36 หัวข้อ + ยอดส่ง)</span>
             </div>
             <h1 className="text-lg sm:text-xl font-black text-slate-900 mt-1.5 tracking-tight">
               {branchTitle} • ประจำเดือน {currentMonthLabel}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               วิเคราะห์ผลปฏิบัติงานจริงจากช่องผลงานทุกกลุ่มงาน (1.1–5.2) • กำลังแสดง{' '}
-              <strong className="text-slate-800">{agg.count} คัน</strong>
+              <strong className="text-slate-800">{agg.count} คัน</strong> • ยอดส่งรวม{' '}
+              <strong className="text-sky-700">{agg.totalDelivered.toLocaleString()} ถัง</strong>
               {zoneFilter !== 'ALL' ? ` (เฉพาะ ${zoneFilter})` : ''}
             </p>
           </div>
@@ -463,44 +501,55 @@ export default function KpiBoardView({
       {/* ==================================================================== */}
       {subTab === 'overview' && (
         <>
-          {/* 6 KPI SUMMARY CARDS (2 rows x 3 cols) */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            <KpiSummaryCard
-              title="1.1 จัดส่งตรงเวลาเฉลี่ย"
-              value={agg.totalsRow['1.1']?.display || '-'}
-              sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.1']?.blueN || 0} / ${agg.totalsRow['1.1']?.validN || 0} คัน`}
-              accent="sky"
-            />
-            <KpiSummaryCard
-              title="2.1 เวลานัดหมายเฉลี่ย"
-              value={agg.totalsRow['2.1']?.display || '-'}
-              sub={`ได้คะแนนเต็ม ${agg.totalsRow['2.1']?.blueN || 0} / ${agg.totalsRow['2.1']?.validN || 0} คัน`}
-              accent="emerald"
-            />
-            <KpiSummaryCard
-              title="1.5 GPS ≤ 100 ม. เฉลี่ย"
-              value={agg.totalsRow['1.5']?.display || '-'}
-              sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.5']?.blueN || 0} / ${agg.totalsRow['1.5']?.validN || 0} คัน`}
-              accent="violet"
-            />
-            <KpiSummaryCard
-              title="1.8 ตรงประเภทน้ำเฉลี่ย"
-              value={agg.totalsRow['1.8']?.display || '-'}
-              sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.8']?.blueN || 0} / ${agg.totalsRow['1.8']?.validN || 0} คัน`}
-              accent="amber"
-            />
-            <KpiSummaryCard
-              title="เคสปัญหารวม (1.2 ตกรอบเฉลี่ย)"
-              value={`${agg.totalCases.toLocaleString()} เคส`}
-              sub={`ตกรอบสุทธิเฉลี่ย ${agg.totalsRow['1.2']?.display || '-'} • พบเคสใน ${agg.carsWithCases} คัน`}
-              accent="rose"
-            />
-            <KpiSummaryCard
-              title="เงินรางวัลรวม & คะแนนเฉลี่ย"
-              value={`฿${agg.totalReward.toLocaleString()}`}
-              sub={`คะแนนรวมเฉลี่ย ${agg.avgPercent.toFixed(2)}% • ได้เต็ม ≥25 ข้อ: ${agg.highBlueCars} คัน`}
-              accent="slate"
-            />
+          {/* ROW 1: 4 CORE KPI SUMMARY CARDS + ROW 2: 3 ROLLUP CARDS (WITH ยอดส่งรวม) */}
+          <section className="space-y-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <KpiSummaryCard
+                title="1.1 จัดส่งตรงเวลาเฉลี่ย"
+                value={agg.totalsRow['1.1']?.display || '-'}
+                sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.1']?.blueN || 0} / ${agg.totalsRow['1.1']?.validN || 0} คัน`}
+                accent="sky"
+              />
+              <KpiSummaryCard
+                title="2.1 เวลานัดหมายเฉลี่ย"
+                value={agg.totalsRow['2.1']?.display || '-'}
+                sub={`ได้คะแนนเต็ม ${agg.totalsRow['2.1']?.blueN || 0} / ${agg.totalsRow['2.1']?.validN || 0} คัน`}
+                accent="emerald"
+              />
+              <KpiSummaryCard
+                title="1.5 GPS ≤ 100 ม. เฉลี่ย"
+                value={agg.totalsRow['1.5']?.display || '-'}
+                sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.5']?.blueN || 0} / ${agg.totalsRow['1.5']?.validN || 0} คัน`}
+                accent="violet"
+              />
+              <KpiSummaryCard
+                title="1.8 ตรงประเภทน้ำเฉลี่ย"
+                value={agg.totalsRow['1.8']?.display || '-'}
+                sub={`ได้คะแนนเต็ม ${agg.totalsRow['1.8']?.blueN || 0} / ${agg.totalsRow['1.8']?.validN || 0} คัน`}
+                accent="amber"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <KpiSummaryCard
+                title="ยอดส่งรวมทั้งหมด (ถัง)"
+                value={`${agg.totalDelivered.toLocaleString()} ถัง`}
+                sub={`เฉลี่ย ${agg.avgDelivered.toLocaleString()} ถัง/คัน • ผ่านเกณฑ์ ≥3,000 ถัง ${agg.qualifiedCount}/${agg.count} คัน`}
+                accent="indigo"
+              />
+              <KpiSummaryCard
+                title="เคสปัญหารวม (1.2 ตกรอบเฉลี่ย)"
+                value={`${agg.totalCases.toLocaleString()} เคส`}
+                sub={`ตกรอบสุทธิเฉลี่ย ${agg.totalsRow['1.2']?.display || '-'} • พบเคสใน ${agg.carsWithCases} คัน`}
+                accent="rose"
+              />
+              <KpiSummaryCard
+                title="เงินรางวัลรวม & คะแนนเฉลี่ย"
+                value={`฿${agg.totalReward.toLocaleString()}`}
+                sub={`คะแนนรวมเฉลี่ย ${agg.avgPercent.toFixed(2)}% • ได้เต็ม ≥25 ข้อ: ${agg.highBlueCars} คัน`}
+                accent="slate"
+              />
+            </div>
           </section>
 
           {/* TOP 5 RANKINGS & URGENT IMPROVEMENT (3 CARDS) */}
@@ -531,7 +580,7 @@ export default function KpiBoardView({
                           {r.carCode} • {r.fullName}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {r.branch} • {r.isTruckS ? 'รถ S' : r.zone}
+                          {r.branch} • {r.isTruckS ? 'รถ S' : r.zone} • ส่ง {r.totalDelivered.toLocaleString()} ถัง
                         </div>
                       </div>
                     </div>
@@ -569,7 +618,7 @@ export default function KpiBoardView({
                           {r.carCode} • {r.fullName}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {r.branch} • {r.isTruckS ? 'รถ S' : r.zone} • {r.totalCases} เคส
+                          {r.branch} • {r.isTruckS ? 'รถ S' : r.zone} • {r.totalCases} เคส • ส่ง {r.totalDelivered.toLocaleString()} ถัง
                         </div>
                       </div>
                     </div>
@@ -607,7 +656,7 @@ export default function KpiBoardView({
                           {r.carCode} • {r.fullName}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {r.branch} • ฿{r.totalReward.toLocaleString()} • เสริมน้ำ {r.cells['2.6']?.display || '0'}
+                          {r.branch} • ฿{r.totalReward.toLocaleString()} • ส่ง {r.totalDelivered.toLocaleString()} ถัง
                         </div>
                       </div>
                     </div>
@@ -620,13 +669,16 @@ export default function KpiBoardView({
             </div>
           </section>
 
-          {/* INTERACTIVE 36-METRIC COMPARISON BAR CHART */}
-          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-4">
+          {/* INTERACTIVE 36-METRIC + VOLUME COMPARISON BAR CHART (ZERO LAYOUT SHIFT ON HOVER) */}
+          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-3.5">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
                 <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-600" />
-                  <span>กราฟเปรียบเทียบรายหัวข้อ: {activeMetric.key} {activeMetric.label}</span>
+                  <span>
+                    กราฟเปรียบเทียบรายหัวข้อ:{' '}
+                    {activeMetric.key === 'VOLUME' ? activeMetric.label : `${activeMetric.key} ${activeMetric.label}`}
+                  </span>
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {isShowingBranchesChart
@@ -677,13 +729,29 @@ export default function KpiBoardView({
               </div>
             </div>
 
-            {/* Group Selector Tabs */}
+            {/* Group Selector Tabs + Quick Volume Button */}
             <div className="flex flex-wrap items-center gap-1.5 no-print">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMetricKey('VOLUME');
+                  setHoveredBarIdx(null);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors inline-flex items-center gap-1 cursor-pointer ${
+                  selectedMetricKey === 'VOLUME'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                    : 'bg-indigo-50/80 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                }`}
+              >
+                <Package className="w-3 h-3" />
+                <span>ยอดส่งจริง (ถัง)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleSelectChartGroup('all')}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                  chartGroupFilter === 'all'
+                  chartGroupFilter === 'all' && selectedMetricKey !== 'VOLUME'
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                 }`}
@@ -698,7 +766,7 @@ export default function KpiBoardView({
                     type="button"
                     onClick={() => handleSelectChartGroup(g.id)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                      chartGroupFilter === g.id
+                      chartGroupFilter === g.id && selectedMetricKey !== 'VOLUME'
                         ? 'bg-sky-600 text-white border-sky-600'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
@@ -730,27 +798,48 @@ export default function KpiBoardView({
               ))}
             </div>
 
-            {/* Interactive SVG Vertical Bar Chart */}
+            {/* Fixed-height status strip (NEVER mounts/unmounts in flow, so ZERO layout jump!) */}
+            <div className="h-9 px-3 rounded-xl bg-slate-900 text-white text-xs flex items-center justify-between gap-2 overflow-hidden">
+              {hoveredBarIdx !== null && mainChartBars[hoveredBarIdx] ? (
+                <>
+                  <div className="flex items-center gap-2 min-w-0 truncate">
+                    <span className="font-black text-sky-300 shrink-0">{mainChartBars[hoveredBarIdx].label}</span>
+                    <span className="text-slate-300 truncate">{mainChartBars[hoveredBarIdx].subLabel}</span>
+                  </div>
+                  <span className="font-black text-white bg-white/15 px-2.5 py-0.5 rounded-md shrink-0">
+                    {mainChartBars[hoveredBarIdx].display} {activeMetric.unit === 'ถัง' ? 'ถัง' : ''}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-300 truncate">
+                    ชี้เมาส์ที่แท่งกราฟเพื่อดูรายละเอียด หรือคลิกแท่งเพื่อเจาะลึกรายคัน/สาขา
+                  </span>
+                  <span className="font-bold text-sky-300 shrink-0">
+                    {activeMetric.key === 'VOLUME'
+                      ? `รวม ${agg.totalDelivered.toLocaleString()} ถัง (เฉลี่ย ${agg.avgDelivered.toLocaleString()} ถัง/คัน)`
+                      : `ค่าสรุปรวม: ${agg.totalsRow[activeMetric.key]?.display || '-'} (${activeMetric.agg === 'avg' ? 'เฉลี่ย' : 'รวม'})`}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Interactive SVG Vertical Bar Chart with Floating Pointer-Events-None Tooltip */}
             {mainChartBars.length === 0 ? (
               <div className="py-10 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 ไม่มีข้อมูลผลงานสำหรับหัวข้อ {activeMetric.key} {activeMetric.label} ในเงื่อนไขที่เลือก
               </div>
             ) : (
-              <div className="relative">
-                {hoveredBarIdx !== null && mainChartBars[hoveredBarIdx] && (
-                  <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs shadow-sm">
-                    <span className="font-bold text-sky-300">{mainChartBars[hoveredBarIdx].label}</span>
-                    <span className="text-slate-300">{mainChartBars[hoveredBarIdx].subLabel}</span>
-                    <span className="font-black text-white bg-white/15 px-2 py-0.5 rounded-md">
-                      {mainChartBars[hoveredBarIdx].display}
-                    </span>
-                  </div>
-                )}
+              <div>
                 <div className="overflow-x-auto pb-2">
                   <VerticalBarSvg
                     bars={mainChartBars}
                     maxVal={mainChartMax}
-                    metric={activeMetric}
+                    metric={
+                      activeMetric.key === 'VOLUME' && isShowingBranchesChart
+                        ? { ...activeMetric, stdLine: undefined }
+                        : activeMetric
+                    }
                     barFillForTier={barFillForTier}
                     hoveredIdx={hoveredBarIdx}
                     onHover={setHoveredBarIdx}
@@ -763,18 +852,15 @@ export default function KpiBoardView({
                 <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500 mt-1">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-xs bg-sky-500" />
-                    ได้คะแนนเต็ม / เกณฑ์สีฟ้า
+                    {activeMetric.key === 'VOLUME' ? 'ยอดส่งดีเยี่ยม (≥ 4,000 ถัง)' : 'ได้คะแนนเต็ม / เกณฑ์สีฟ้า'}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500" />
-                    ผ่านมาตรฐาน
+                    {activeMetric.key === 'VOLUME' ? 'ผ่านเกณฑ์ (≥ 3,000 ถัง)' : 'ผ่านมาตรฐาน'}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-xs bg-rose-500" />
-                    ตกเกณฑ์ / มีเคสหักคะแนน
-                  </span>
-                  <span className="ml-auto font-semibold text-slate-700">
-                    ค่าสรุปรวม: {agg.totalsRow[activeMetric.key]?.display || '-'} ({activeMetric.agg === 'avg' ? 'เฉลี่ย' : 'รวม'})
+                    {activeMetric.key === 'VOLUME' ? 'ต่ำกว่าเกณฑ์ (< 3,000 ถัง)' : 'ตกเกณฑ์ / มีเคสหักคะแนน'}
                   </span>
                 </div>
               </div>
@@ -890,17 +976,18 @@ export default function KpiBoardView({
             </section>
           )}
 
-          {/* FULL 36-METRIC KPI TABLE */}
+          {/* FULL 36-METRIC KPI TABLE (WITH ยอดส่ง (ถัง) COLUMN) */}
           <section className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-200 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                   <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
                     <Layers className="w-4 h-4 text-sky-600" />
-                    <span>ตารางข้อมูลผลงาน KPI ครบทั้ง {KPI_METRICS.length} หัวข้อรางวัลมาตรฐาน</span>
+                    <span>ตารางข้อมูลผลงาน KPI ครบทั้ง {KPI_METRICS.length} หัวข้อรางวัลมาตรฐาน + ยอดส่ง</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
                     กำลังแสดง <strong className="text-slate-800">{filteredTableRows.length}</strong> จาก {agg.count} คัน •
+                    ยอดส่งรวม <strong className="text-sky-700">{agg.totalDelivered.toLocaleString()} ถัง</strong> •
                     คลิกเบอร์รถเพื่อเปิดสลิปรายละเอียดรายคัน
                   </p>
                 </div>
@@ -988,6 +1075,10 @@ export default function KpiBoardView({
                       เบอร์รถ / ชื่อ-สกุล
                     </th>
                     <th className="px-2.5 py-2.5 font-bold text-slate-700 text-center whitespace-nowrap border-r border-slate-200">
+                      <div>ยอดส่ง (ถัง)</div>
+                      <div className="text-[9px] font-normal text-slate-400">เกณฑ์ ≥3,000</div>
+                    </th>
+                    <th className="px-2.5 py-2.5 font-bold text-slate-700 text-center whitespace-nowrap border-r border-slate-200">
                       คะแนนรวม
                     </th>
                     <th className="px-2.5 py-2.5 font-bold text-slate-700 text-center whitespace-nowrap border-r border-slate-200">
@@ -1030,6 +1121,20 @@ export default function KpiBoardView({
                           </div>
                           <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-500 shrink-0" />
                         </div>
+                      </td>
+
+                      <td className="px-2.5 py-2 text-center border-r border-slate-200 whitespace-nowrap">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border ${
+                            r.totalDelivered >= 4000
+                              ? TIER_PILL_CLASS.blue
+                              : r.totalDelivered >= 3000
+                              ? TIER_PILL_CLASS.green
+                              : TIER_PILL_CLASS.red
+                          }`}
+                        >
+                          {r.totalDelivered.toLocaleString()}
+                        </span>
                       </td>
 
                       <td className="px-2.5 py-2 text-center border-r border-slate-200 whitespace-nowrap">
@@ -1090,13 +1195,17 @@ export default function KpiBoardView({
                   ))}
                 </tbody>
 
-                {/* DARK SUMMARY FOOTER ROW (Matching Reference Apps Script) */}
+                {/* DARK SUMMARY FOOTER ROW */}
                 <tfoot>
                   <tr className="bg-slate-900 text-white font-bold">
                     <td className="sticky left-0 z-10 bg-slate-900 px-3 py-3 border-r border-slate-700 whitespace-nowrap">
                       {selectedBranch === 'all'
                         ? `รวมทั้งหมด (${agg.count} คัน)`
                         : `รวมทั้งสาขา (${agg.count} คัน)`}
+                    </td>
+                    <td className="px-2.5 py-3 text-center border-r border-slate-700 whitespace-nowrap">
+                      <div className="text-indigo-300 font-black">{agg.totalDelivered.toLocaleString()}</div>
+                      <div className="text-[10px] text-slate-400">เฉลี่ย {agg.avgDelivered.toLocaleString()}</div>
                     </td>
                     <td className="px-2.5 py-3 text-center border-r border-slate-700 whitespace-nowrap">
                       <div className="text-sky-300 font-black">{agg.avgPercent.toFixed(2)}%</div>
@@ -1141,39 +1250,33 @@ export default function KpiBoardView({
       {/* ==================================================================== */}
       {subTab === 'monthly' && (
         <section className="space-y-4">
-          {/* Multi-Line Core KPI Trend SVG */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-              <div>
-                <h2 className="text-sm sm:text-base font-black text-slate-900">
-                  แนวโน้ม 4 ตัวชี้วัดหลักรายเดือน ({branchTitle})
-                </h2>
-                <p className="text-xs text-slate-500">
-                  เปรียบเทียบผลงานต่อเนื่องทุกเดือนที่มีข้อมูลในระบบ ({monthlyTrend.length} เดือน)
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-[11px] font-bold text-slate-600">
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-sky-500 inline-block" />1.1 ตรงเวลา</span>
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500 inline-block" />2.1 นัดหมาย</span>
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-violet-500 inline-block" />1.5 GPS 100 ม.</span>
-                <span className="inline-flex items-center gap-1"><span className="w-3 h-0.5 bg-amber-500 inline-block" />1.8 ประเภทน้ำ</span>
-              </div>
-            </div>
+          {/* 1. Multi-Line Core KPI Trend SVG with Data Labels + Interactive Hover Tooltip */}
+          <MonthlyTrendCard
+            trend={monthlyTrend}
+            branchTitle={branchTitle}
+            activeMonthKey={selectedMonthKey}
+            onSelectMonth={(key) => {
+              onSelectMonth?.(key);
+              setSubTab('overview');
+            }}
+          />
 
-            {monthlyTrend.length > 0 ? (
-              <div className="overflow-x-auto">
-                <MonthlyTrendLineSvg trend={monthlyTrend} activeMonthKey={selectedMonthKey} />
-              </div>
-            ) : (
-              <div className="py-10 text-center text-xs text-slate-400">ไม่พบข้อมูลรายเดือนสำหรับเงื่อนไขที่เลือก</div>
-            )}
-          </div>
+          {/* 2. Monthly Delivery Volume Bar Chart (ยอดส่งรวมรายเดือน ถัง) */}
+          <MonthlyVolumeCard
+            trend={monthlyTrend}
+            branchTitle={branchTitle}
+            activeMonthKey={selectedMonthKey}
+            onSelectMonth={(key) => {
+              onSelectMonth?.(key);
+              setSubTab('overview');
+            }}
+          />
 
-          {/* Monthly Comparison Table with MoM Deltas */}
+          {/* 3. Monthly Comparison Table with MoM Deltas + ยอดส่งรวม (ถัง) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
             <div className="p-4 sm:p-5 border-b border-slate-200">
               <h2 className="text-sm sm:text-base font-black text-slate-900">
-                ตารางเปรียบเทียบผลงานรายเดือน (MoM) — {branchTitle}
+                ตารางเปรียบเทียบผลงานและยอดส่งรายเดือน (MoM) — {branchTitle}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 คลิกที่แถวเดือนใดก็ได้เพื่อสลับไปดูรายละเอียด `ภาพรวมรายเดือน` ของเดือนนั้นทันที
@@ -1185,6 +1288,7 @@ export default function KpiBoardView({
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700">
                     <th className="px-3 py-2.5 font-black">เดือน</th>
                     <th className="px-2.5 py-2.5 text-center font-bold">จำนวนรถ</th>
+                    <th className="px-2.5 py-2.5 text-center font-bold">ยอดส่งรวม (ถัง)</th>
                     <th className="px-2.5 py-2.5 text-center font-bold">1.1 ตรงเวลา</th>
                     <th className="px-2.5 py-2.5 text-center font-bold">2.1 นัดหมาย</th>
                     <th className="px-2.5 py-2.5 text-center font-bold">1.5 GPS</th>
@@ -1219,6 +1323,15 @@ export default function KpiBoardView({
                           )}
                         </td>
                         <td className="px-2.5 py-2.5 text-center text-slate-700">{row.count}</td>
+                        <td className="px-2.5 py-2.5 text-center whitespace-nowrap">
+                          <div className="font-black text-indigo-700">
+                            {row.totalDelivered.toLocaleString()}
+                            <DeltaBadge delta={row.deltaDelivered} />
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            เฉลี่ย {row.avgDelivered.toLocaleString()} ถัง/คัน
+                          </div>
+                        </td>
                         <td className="px-2.5 py-2.5 text-center whitespace-nowrap">
                           <span className="font-bold text-sky-700">
                             {row.m11 !== null ? `${row.m11.toFixed(2)}%` : '-'}
@@ -1276,6 +1389,7 @@ function KpiSummaryCard({ title, value, sub, accent = 'sky' }) {
     emerald: 'border-emerald-100 bg-gradient-to-br from-white to-emerald-50/40 text-emerald-700',
     violet: 'border-violet-100 bg-gradient-to-br from-white to-violet-50/40 text-violet-700',
     amber: 'border-amber-100 bg-gradient-to-br from-white to-amber-50/40 text-amber-700',
+    indigo: 'border-indigo-100 bg-gradient-to-br from-white to-indigo-50/40 text-indigo-700',
     rose: 'border-rose-100 bg-gradient-to-br from-white to-rose-50/40 text-rose-700',
     slate: 'border-slate-200 bg-gradient-to-br from-white to-slate-50 text-slate-900',
   }[accent];
@@ -1292,7 +1406,7 @@ function KpiSummaryCard({ title, value, sub, accent = 'sky' }) {
 function DeltaBadge({ delta, suffix = '', invert = false }) {
   if (delta === null || delta === undefined || Math.abs(delta) < 0.01) return null;
   const isGood = invert ? delta < 0 : delta > 0;
-  const formatted = suffix ? `${Math.abs(delta).toFixed(1)}${suffix}` : Math.abs(Math.round(delta));
+  const formatted = suffix ? `${Math.abs(delta).toFixed(1)}${suffix}` : Math.abs(Math.round(delta)).toLocaleString();
   return (
     <span
       className={`ml-1 inline-flex items-center text-[10px] font-bold ${
@@ -1308,12 +1422,13 @@ function DeltaBadge({ delta, suffix = '', invert = false }) {
 function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHover, onBarClick }) {
   const barW = bars.length <= 18 ? 42 : 30;
   const gap = bars.length <= 18 ? 14 : 8;
-  const padLeft = 44;
-  const padRight = 16;
-  const padTop = 26;
+  const step = barW + gap;
+  const padLeft = 52;
+  const padRight = 18;
+  const padTop = 28;
   const padBottom = 68;
   const plotH = 210;
-  const plotW = Math.max(540, bars.length * (barW + gap));
+  const plotW = Math.max(540, bars.length * step);
   const svgW = padLeft + plotW + padRight;
   const svgH = padTop + plotH + padBottom;
 
@@ -1321,11 +1436,19 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
   const gridTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => maxVal * t);
 
   return (
-    <svg width={svgW} height={svgH} className="block select-none">
+    <svg
+      width={svgW}
+      height={svgH}
+      className="block select-none"
+      onMouseLeave={() => onHover?.(null)}
+    >
       {/* Y-Axis gridlines */}
       {gridTicks.map((tick, idx) => {
         const y = yFor(tick);
-        const lbl = metric.unit === '%' || metric.kind === 'grade' ? `${Math.round(tick)}%` : Math.round(tick);
+        const lbl =
+          metric.unit === '%' || metric.kind === 'grade'
+            ? `${Math.round(tick)}%`
+            : Math.round(tick).toLocaleString();
         return (
           <g key={idx}>
             <line x1={padLeft} x2={svgW - padRight} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 3" />
@@ -1336,7 +1459,7 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
         );
       })}
 
-      {/* Standard & Blue threshold dashed lines for percent metrics */}
+      {/* Standard & Blue threshold dashed lines */}
       {metric.stdLine !== undefined && metric.stdLine <= maxVal && (
         <line
           x1={padLeft}
@@ -1360,9 +1483,10 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
         />
       )}
 
-      {/* Bars */}
+      {/* Bars + Full-column invisible hover hit zone (prevents flicker & layout jumps) */}
       {bars.map((bar, idx) => {
-        const x = padLeft + idx * (barW + gap) + gap / 2;
+        const colX = padLeft + idx * step;
+        const x = colX + gap / 2;
         const y = yFor(bar.value || 0);
         const h = Math.max(2, padTop + plotH - y);
         const isHovered = hoveredIdx === idx;
@@ -1371,9 +1495,19 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
             key={bar.id}
             className="cursor-pointer"
             onMouseEnter={() => onHover?.(idx)}
-            onMouseLeave={() => onHover?.(null)}
             onClick={() => onBarClick?.(bar)}
           >
+            {/* Highlight column background when hovered */}
+            {isHovered && (
+              <rect
+                x={colX}
+                y={padTop - 8}
+                width={step}
+                height={plotH + 12}
+                rx={6}
+                fill="#f1f5f9"
+              />
+            )}
             <rect
               x={x}
               y={y}
@@ -1381,7 +1515,7 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
               height={h}
               rx={5}
               fill={barFillForTier(bar.tier)}
-              opacity={hoveredIdx === null || isHovered ? 1 : 0.45}
+              opacity={hoveredIdx === null || isHovered ? 1 : 0.55}
             />
             <text
               x={x + barW / 2}
@@ -1389,7 +1523,7 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
               textAnchor="middle"
               fontSize="9.5"
               fontWeight="700"
-              fill="#334155"
+              fill={isHovered ? '#0f172a' : '#334155'}
             >
               {bar.display}
             </text>
@@ -1404,6 +1538,14 @@ function VerticalBarSvg({ bars, maxVal, metric, barFillForTier, hoveredIdx, onHo
             >
               {bar.label}
             </text>
+            {/* Full-height transparent hit zone */}
+            <rect
+              x={colX}
+              y={0}
+              width={step}
+              height={svgH}
+              fill="transparent"
+            />
           </g>
         );
       })}
@@ -1484,7 +1626,6 @@ function ZoneGroupedBarSvg({ zones }) {
     { key: 'm18', color: '#f59e0b', label: '1.8 ประเภทน้ำ' },
   ];
 
-  // Dynamic floor so differences between 60%–100% read cleanly
   const allVals = zones.flatMap((z) => series.map((s) => z[s.key] || 0));
   const minFloor = Math.max(0, Math.min(60, Math.floor((Math.min(...allVals) - 5) / 10) * 10));
   const span = Math.max(10, 100 - minFloor);
@@ -1554,82 +1695,430 @@ function ZoneGroupedBarSvg({ zones }) {
   );
 }
 
-function MonthlyTrendLineSvg({ trend, activeMonthKey }) {
-  const lines = [
-    { key: 'm11', color: '#0ea5e9', label: '1.1 ตรงเวลา' },
-    { key: 'm21', color: '#10b981', label: '2.1 นัดหมาย' },
-    { key: 'm15', color: '#8b5cf6', label: '1.5 GPS' },
-    { key: 'm18', color: '#f59e0b', label: '1.8 ประเภทน้ำ' },
-  ];
+const TREND_LINE_DEFS = [
+  { key: 'm11', color: '#0ea5e9', label: '1.1 ตรงเวลา', pillCls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { key: 'm21', color: '#10b981', label: '2.1 นัดหมาย', pillCls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { key: 'm15', color: '#8b5cf6', label: '1.5 GPS 100 ม.', pillCls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { key: 'm18', color: '#f59e0b', label: '1.8 ประเภทน้ำ', pillCls: 'bg-amber-50 text-amber-700 border-amber-200' },
+];
 
-  const vals = trend.flatMap((t) => lines.map((l) => t[l.key]).filter((v) => v !== null && v !== undefined));
-  const minFloor = Math.max(0, Math.min(70, Math.floor((Math.min(...vals, 70) - 5) / 10) * 10));
+function MonthlyTrendCard({ trend, branchTitle, activeMonthKey, onSelectMonth }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [visibleKeys, setVisibleKeys] = useState(() => TREND_LINE_DEFS.map((l) => l.key));
+
+  const toggleLine = (key) => {
+    setVisibleKeys((prev) => {
+      if (prev.includes(key)) {
+        return prev.length > 1 ? prev.filter((k) => k !== key) : prev;
+      }
+      return [...prev, key];
+    });
+  };
+
+  const activeIdx = useMemo(() => {
+    if (hoveredIdx !== null && trend[hoveredIdx]) return hoveredIdx;
+    const found = trend.findIndex((t) => t.key === activeMonthKey);
+    return found >= 0 ? found : trend.length - 1;
+  }, [hoveredIdx, trend, activeMonthKey]);
+
+  const focusedMonth = trend[activeIdx] || null;
+  const activeLines = TREND_LINE_DEFS.filter((l) => visibleKeys.includes(l.key));
+
+  const vals = trend.flatMap((t) =>
+    activeLines.map((l) => t[l.key]).filter((v) => v !== null && v !== undefined)
+  );
+  const minFloor = Math.max(0, Math.min(75, Math.floor((Math.min(...vals, 75) - 5) / 5) * 5));
   const span = Math.max(10, 100 - minFloor);
 
-  const stepX = 82;
-  const padLeft = 44;
-  const padRight = 28;
-  const padTop = 20;
-  const padBottom = 38;
-  const plotH = 200;
-  const plotW = Math.max(560, Math.max(1, trend.length - 1) * stepX);
+  const stepX = 92;
+  const padLeft = 48;
+  const padRight = 40;
+  const padTop = 30;
+  const padBottom = 42;
+  const plotH = 225;
+  const plotW = Math.max(600, Math.max(1, trend.length - 1) * stepX);
   const svgW = padLeft + plotW + padRight;
   const svgH = padTop + plotH + padBottom;
 
   const xFor = (i) =>
     trend.length <= 1 ? padLeft + plotW / 2 : padLeft + (i / (trend.length - 1)) * plotW;
-  const yFor = (v) => padTop + plotH - ((Math.max(minFloor, Math.min(100, v)) - minFloor) / span) * plotH;
-  const ticks = [minFloor, minFloor + span * 0.5, 100];
+  const yFor = (v) =>
+    padTop + plotH - ((Math.max(minFloor, Math.min(100, v)) - minFloor) / span) * plotH;
+  const ticks = [minFloor, minFloor + span * 0.25, minFloor + span * 0.5, minFloor + span * 0.75, 100];
+
+  // Precompute anti-colliding Y label positions for every month column
+  const labelsByMonth = useMemo(() => {
+    return trend.map((t, i) => {
+      const rawPts = activeLines
+        .map((l) => {
+          const val = t[l.key];
+          if (val === null || val === undefined) return null;
+          return {
+            key: l.key,
+            color: l.color,
+            val,
+            text: `${val.toFixed(1)}%`,
+            dotY: yFor(val),
+            labelY: yFor(val) - 8,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.dotY - b.dotY); // top (smallest Y) to bottom (largest Y)
+
+      // Push down any label that collides within 13px of the label above it
+      const minGap = 13;
+      for (let j = 1; j < rawPts.length; j++) {
+        if (rawPts[j].labelY - rawPts[j - 1].labelY < minGap) {
+          rawPts[j].labelY = rawPts[j - 1].labelY + minGap;
+        }
+      }
+      return { idx: i, x: xFor(i), points: rawPts };
+    });
+  }, [trend, activeLines, minFloor, span]);
 
   return (
-    <svg width={svgW} height={svgH} className="block select-none">
-      {ticks.map((t, i) => {
-        const y = yFor(t);
-        return (
-          <g key={i}>
-            <line x1={padLeft} x2={svgW - padRight} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 3" />
-            <text x={padLeft - 6} y={y + 3} textAnchor="end" fontSize="10" fill="#94a3b8" fontWeight="600">
-              {Math.round(t)}%
-            </text>
-          </g>
-        );
-      })}
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-3.5">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div>
+          <h2 className="text-sm sm:text-base font-black text-slate-900">
+            แนวโน้ม 4 ตัวชี้วัดหลักรายเดือน ({branchTitle})
+          </h2>
+          <p className="text-xs text-slate-500">
+            แสดงตัวเลขจริงทุกเดือน • ชี้เมาส์ที่เดือนใดก็ได้เพื่อดูรายละเอียด หรือคลิกชื่อตัวชี้วัดด้านขวาเพื่อเปิด/ปิดเส้น
+          </p>
+        </div>
 
-      {lines.map((l) => {
-        const pts = trend
-          .map((t, i) => (t[l.key] !== null && t[l.key] !== undefined ? `${xFor(i)},${yFor(t[l.key])}` : null))
-          .filter(Boolean);
-        if (pts.length === 0) return null;
-        return (
-          <g key={l.key}>
-            <polyline fill="none" stroke={l.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={pts.join(' ')} />
-            {trend.map((t, i) => {
-              const v = t[l.key];
-              if (v === null || v === undefined) return null;
-              const isAct = t.key === activeMonthKey;
+        {/* Interactive Legend Toggle Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 no-print">
+          {TREND_LINE_DEFS.map((l) => {
+            const on = visibleKeys.includes(l.key);
+            return (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => toggleLine(l.key)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                  on
+                    ? `${l.pillCls} shadow-2xs`
+                    : 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: on ? l.color : '#94a3b8' }} />
+                <span>{l.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Fixed-Height Interactive Month Detail Strip (Zero Layout Shift on Hover!) */}
+      {focusedMonth && (
+        <div className="px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-sky-300 text-sm">{focusedMonth.label}</span>
+            <span className="text-slate-300 text-[11px]">
+              ({focusedMonth.count} คัน • ยอดส่ง <strong className="text-indigo-300">{focusedMonth.totalDelivered.toLocaleString()} ถัง</strong> •
+              รางวัล <strong className="text-emerald-300">฿{focusedMonth.totalReward.toLocaleString()}</strong> •
+              เคส <strong className="text-rose-300">{focusedMonth.totalCases}</strong>)
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-[11px]">
+            <span>1.1 ตรงเวลา: <strong className="text-sky-300">{focusedMonth.m11 !== null ? `${focusedMonth.m11.toFixed(2)}%` : '-'}</strong></span>
+            <span>2.1 นัดหมาย: <strong className="text-emerald-300">{focusedMonth.m21 !== null ? `${focusedMonth.m21.toFixed(2)}%` : '-'}</strong></span>
+            <span>1.5 GPS: <strong className="text-violet-300">{focusedMonth.m15 !== null ? `${focusedMonth.m15.toFixed(2)}%` : '-'}</strong></span>
+            <span>1.8 ประเภทน้ำ: <strong className="text-amber-300">{focusedMonth.m18 !== null ? `${focusedMonth.m18.toFixed(2)}%` : '-'}</strong></span>
+          </div>
+        </div>
+      )}
+
+      {trend.length > 0 ? (
+        <div className="overflow-x-auto pb-1">
+          <svg
+            width={svgW}
+            height={svgH}
+            className="block select-none"
+            onMouseLeave={() => setHoveredIdx(null)}
+          >
+            {/* Horizontal grid lines */}
+            {ticks.map((t, i) => {
+              const y = yFor(t);
               return (
-                <circle key={t.key} cx={xFor(i)} cy={yFor(v)} r={isAct ? 5 : 3.5} fill="#fff" stroke={l.color} strokeWidth={2.5}>
-                  <title>{`${t.label} • ${l.label}: ${v.toFixed(2)}%`}</title>
-                </circle>
+                <g key={i}>
+                  <line x1={padLeft} x2={svgW - padRight} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 3" />
+                  <text x={padLeft - 8} y={y + 3} textAnchor="end" fontSize="10" fill="#94a3b8" fontWeight="600">
+                    {Math.round(t)}%
+                  </text>
+                </g>
               );
             })}
-          </g>
-        );
-      })}
 
-      {trend.map((t, i) => (
-        <text
-          key={t.key}
-          x={xFor(i)}
-          y={padTop + plotH + 22}
-          textAnchor="middle"
-          fontSize="10.5"
-          fontWeight={t.key === activeMonthKey ? '800' : '600'}
-          fill={t.key === activeMonthKey ? '#0284c7' : '#475569'}
+            {/* Active / Hovered vertical guide line */}
+            {activeIdx >= 0 && trend[activeIdx] && (
+              <g>
+                <rect
+                  x={xFor(activeIdx) - stepX / 2.4}
+                  y={padTop - 12}
+                  width={stepX / 1.2}
+                  height={plotH + 20}
+                  rx={8}
+                  fill="#f1f5f9"
+                />
+                <line
+                  x1={xFor(activeIdx)}
+                  x2={xFor(activeIdx)}
+                  y1={padTop - 8}
+                  y2={padTop + plotH}
+                  stroke="#94a3b8"
+                  strokeWidth="1.25"
+                  strokeDasharray="4 3"
+                />
+              </g>
+            )}
+
+            {/* Polylines & Dots */}
+            {activeLines.map((l) => {
+              const pts = trend
+                .map((t, i) =>
+                  t[l.key] !== null && t[l.key] !== undefined ? `${xFor(i)},${yFor(t[l.key])}` : null
+                )
+                .filter(Boolean);
+              if (pts.length === 0) return null;
+              return (
+                <g key={l.key}>
+                  <polyline
+                    fill="none"
+                    stroke={l.color}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    points={pts.join(' ')}
+                  />
+                  {trend.map((t, i) => {
+                    const v = t[l.key];
+                    if (v === null || v === undefined) return null;
+                    const isFocus = i === activeIdx;
+                    return (
+                      <circle
+                        key={t.key}
+                        cx={xFor(i)}
+                        cy={yFor(v)}
+                        r={isFocus ? 5.5 : 3.5}
+                        fill={isFocus ? l.color : '#fff'}
+                        stroke={l.color}
+                        strokeWidth={isFocus ? 2 : 2.5}
+                      />
+                    );
+                  })}
+                </g>
+              );
+            })}
+
+            {/* Always-Visible Anti-Colliding Value Labels */}
+            {labelsByMonth.map((col) => {
+              const isFocus = col.idx === activeIdx;
+              return (
+                <g key={col.idx}>
+                  {col.points.map((pt) => (
+                    <g key={pt.key}>
+                      <rect
+                        x={col.x - 19}
+                        y={pt.labelY - 9}
+                        width={38}
+                        height={12}
+                        rx={3}
+                        fill="#ffffff"
+                        fillOpacity={isFocus ? 0.96 : 0.85}
+                      />
+                      <text
+                        x={col.x}
+                        y={pt.labelY}
+                        textAnchor="middle"
+                        fontSize={isFocus ? '10' : '9.2'}
+                        fontWeight={isFocus ? '800' : '700'}
+                        fill={pt.color}
+                      >
+                        {pt.text}
+                      </text>
+                    </g>
+                  ))}
+                </g>
+              );
+            })}
+
+            {/* X-Axis Month Labels & Full-Column Hover/Click Hit Zones */}
+            {trend.map((t, i) => {
+              const cx = xFor(i);
+              const isFocus = i === activeIdx;
+              const colW = trend.length > 1 ? plotW / (trend.length - 1) : plotW;
+              return (
+                <g
+                  key={t.key}
+                  className="cursor-pointer"
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onClick={() => onSelectMonth?.(t.key)}
+                >
+                  <text
+                    x={cx}
+                    y={padTop + plotH + 24}
+                    textAnchor="middle"
+                    fontSize="11"
+                    fontWeight={isFocus ? '800' : '600'}
+                    fill={isFocus ? '#0284c7' : '#475569'}
+                  >
+                    {t.shortLabel}
+                  </text>
+                  <rect
+                    x={cx - colW / 2}
+                    y={0}
+                    width={colW}
+                    height={svgH}
+                    fill="transparent"
+                  />
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      ) : (
+        <div className="py-10 text-center text-xs text-slate-400">ไม่พบข้อมูลรายเดือนสำหรับเงื่อนไขที่เลือก</div>
+      )}
+    </div>
+  );
+}
+
+function MonthlyVolumeCard({ trend, branchTitle, activeMonthKey, onSelectMonth }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  if (!trend || trend.length === 0) return null;
+
+  const activeIdx =
+    hoveredIdx !== null && trend[hoveredIdx]
+      ? hoveredIdx
+      : Math.max(0, trend.findIndex((t) => t.key === activeMonthKey));
+  const focused = trend[activeIdx] || trend[trend.length - 1];
+
+  const maxVol = Math.max(...trend.map((t) => t.totalDelivered || 0), 1) * 1.15;
+  const barW = 44;
+  const stepX = 92;
+  const padLeft = 58;
+  const padRight = 32;
+  const padTop = 28;
+  const padBottom = 40;
+  const plotH = 175;
+  const plotW = Math.max(600, Math.max(1, trend.length - 1) * stepX);
+  const svgW = padLeft + plotW + padRight;
+  const svgH = padTop + plotH + padBottom;
+
+  const xFor = (i) =>
+    trend.length <= 1 ? padLeft + plotW / 2 : padLeft + (i / (trend.length - 1)) * plotW;
+  const yFor = (v) => padTop + plotH - (Math.min(maxVol, Math.max(0, v)) / maxVol) * plotH;
+  const ticks = [0, 0.5, 1].map((t) => maxVol * t);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
+            <Package className="w-4 h-4 text-indigo-600" />
+            <span>แนวโน้มยอดส่งรวมรายเดือน (ถัง) — {branchTitle}</span>
+          </h2>
+          <p className="text-xs text-slate-500">
+            เปรียบเทียบปริมาณถังน้ำที่จัดส่งจริงในแต่ละเดือน พร้อมค่าเฉลี่ยถังต่อคัน
+          </p>
+        </div>
+        {focused && (
+          <div className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-950 font-semibold">
+            <strong className="text-indigo-700">{focused.label}:</strong>{' '}
+            {focused.totalDelivered.toLocaleString()} ถัง (เฉลี่ย {focused.avgDelivered.toLocaleString()} ถัง/คัน •
+            ผ่านเกณฑ์ ≥3,000 ถัง {focused.qualifiedCount}/{focused.count} คัน)
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-x-auto pb-1">
+        <svg
+          width={svgW}
+          height={svgH}
+          className="block select-none"
+          onMouseLeave={() => setHoveredIdx(null)}
         >
-          {t.shortLabel}
-        </text>
-      ))}
-    </svg>
+          {ticks.map((t, i) => {
+            const y = yFor(t);
+            return (
+              <g key={i}>
+                <line x1={padLeft} x2={svgW - padRight} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="3 3" />
+                <text x={padLeft - 8} y={y + 3} textAnchor="end" fontSize="10" fill="#94a3b8" fontWeight="600">
+                  {Math.round(t).toLocaleString()}
+                </text>
+              </g>
+            );
+          })}
+
+          {trend.map((t, i) => {
+            const cx = xFor(i);
+            const x = cx - barW / 2;
+            const y = yFor(t.totalDelivered || 0);
+            const h = Math.max(2, padTop + plotH - y);
+            const isFocus = i === activeIdx;
+            const colW = trend.length > 1 ? plotW / (trend.length - 1) : plotW;
+
+            return (
+              <g
+                key={t.key}
+                className="cursor-pointer"
+                onMouseEnter={() => setHoveredIdx(i)}
+                onClick={() => onSelectMonth?.(t.key)}
+              >
+                {isFocus && (
+                  <rect
+                    x={cx - barW / 2 - 6}
+                    y={padTop - 10}
+                    width={barW + 12}
+                    height={plotH + 14}
+                    rx={8}
+                    fill="#eef2ff"
+                  />
+                )}
+                <rect
+                  x={x}
+                  y={y}
+                  width={barW}
+                  height={h}
+                  rx={6}
+                  fill={isFocus ? '#4f46e5' : '#6366f1'}
+                  opacity={hoveredIdx === null || isFocus ? 1 : 0.65}
+                />
+                <text
+                  x={cx}
+                  y={y - 6}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fontWeight="800"
+                  fill={isFocus ? '#312e81' : '#334155'}
+                >
+                  {t.totalDelivered.toLocaleString()}
+                </text>
+                <text
+                  x={cx}
+                  y={padTop + plotH + 22}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontWeight={isFocus ? '800' : '600'}
+                  fill={isFocus ? '#4f46e5' : '#475569'}
+                >
+                  {t.shortLabel}
+                </text>
+                <rect
+                  x={cx - colW / 2}
+                  y={0}
+                  width={colW}
+                  height={svgH}
+                  fill="transparent"
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
   );
 }

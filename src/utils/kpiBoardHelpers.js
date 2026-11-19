@@ -56,7 +56,23 @@ export const KPI_METRICS = [
   { key: '5.2', itemCode: '5.2', group: 'g5', shortLabel: '5.2 หนังสือเตือน', label: 'หนังสือเตือน', unit: 'ใบ', kind: 'count_zero', agg: 'sum', caseCategory: 'service_brand', targetHint: '0 ใบ' },
 ];
 
-export const METRIC_BY_KEY = Object.fromEntries(KPI_METRICS.map((m) => [m.key, m]));
+export const VOLUME_METRIC = {
+  key: 'VOLUME',
+  itemCode: 'VOLUME',
+  group: 'volume',
+  shortLabel: 'ยอดส่งจริง (ถัง)',
+  label: 'จำนวนยอดส่งจริง (ถัง)',
+  unit: 'ถัง',
+  kind: 'volume',
+  agg: 'sum',
+  targetHint: 'เกณฑ์ ≥ 3,000 ถัง',
+  stdLine: 3000,
+};
+
+export const METRIC_BY_KEY = {
+  ...Object.fromEntries(KPI_METRICS.map((m) => [m.key, m])),
+  VOLUME: VOLUME_METRIC,
+};
 
 function isMissingResultText(rawStr) {
   const s = cleanText(rawStr)
@@ -243,6 +259,9 @@ export function extractVehicleKpiRow(vehicle) {
     totalScore: Number(vehicle?.totals?.totalScore || 0),
     totalPercent: Number(vehicle?.totals?.totalPercent || 0),
     totalReward: Number(vehicle?.totals?.totalReward || 0),
+    totalDelivered: Number(vehicle?.general?.totalDelivered || 0),
+    totalMembers: Number(vehicle?.general?.totalMembers || 0),
+    distance: Number(vehicle?.general?.distance || 0),
     qualified: Boolean(vehicle?.general?.qualified),
     cells,
     blueCount,
@@ -286,6 +305,9 @@ export function aggregateKpiRows(rows = []) {
   }
 
   const totalReward = rows.reduce((s, r) => s + r.totalReward, 0);
+  const totalDelivered = rows.reduce((s, r) => s + r.totalDelivered, 0);
+  const avgDelivered = count > 0 ? Math.round(totalDelivered / count) : 0;
+  const qualifiedCount = rows.filter((r) => r.qualified || r.totalDelivered >= 3000).length;
   const avgPercent = count > 0 ? rows.reduce((s, r) => s + r.totalPercent, 0) / count : 0;
   const totalCases = rows.reduce((s, r) => s + r.totalCases, 0);
   const highBlueCars = rows.filter((r) => r.blueCount >= 25).length;
@@ -379,6 +401,9 @@ export function aggregateKpiRows(rows = []) {
         branch: branchName,
         count: list.length,
         totalReward: list.reduce((s, x) => s + x.totalReward, 0),
+        totalDelivered: list.reduce((s, x) => s + x.totalDelivered, 0),
+        avgDelivered: list.length > 0 ? Math.round(list.reduce((s, x) => s + x.totalDelivered, 0) / list.length) : 0,
+        qualifiedCount: list.filter((x) => x.qualified || x.totalDelivered >= 3000).length,
         avgPercent: list.reduce((s, x) => s + x.totalPercent, 0) / Math.max(list.length, 1),
         totalCases: list.reduce((s, x) => s + x.totalCases, 0),
         casesByCategory: {
@@ -394,6 +419,9 @@ export function aggregateKpiRows(rows = []) {
     count,
     totalsRow,
     totalReward,
+    totalDelivered,
+    avgDelivered,
+    qualifiedCount,
     avgPercent,
     totalCases,
     highBlueCars,
@@ -456,6 +484,9 @@ export function computeMonthlyKpiTrend(allMonthsList = [], selectedBranch = 'all
       totalCases: agg.totalCases,
       avgPercent: agg.avgPercent,
       totalReward: agg.totalReward,
+      totalDelivered: agg.totalDelivered,
+      avgDelivered: agg.avgDelivered,
+      qualifiedCount: agg.qualifiedCount,
     };
   }).filter((p) => p.count > 0);
 
@@ -467,6 +498,7 @@ export function computeMonthlyKpiTrend(allMonthsList = [], selectedBranch = 'all
       delta21: prev && item.m21 !== null && prev.m21 !== null ? item.m21 - prev.m21 : null,
       deltaCases: prev ? item.totalCases - prev.totalCases : null,
       deltaReward: prev ? item.totalReward - prev.totalReward : null,
+      deltaDelivered: prev ? item.totalDelivered - prev.totalDelivered : null,
     };
   });
 }
