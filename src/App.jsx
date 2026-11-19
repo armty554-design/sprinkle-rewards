@@ -46,6 +46,7 @@ import {
   parseUrlState,
   sanitizeUrlStateForUser,
   buildCanonicalUrl,
+  normalizeBasePath,
 } from './utils/urlState';
 import {
   AlertCircle,
@@ -325,7 +326,12 @@ export default function App() {
       availableMonthKeys: monthKeys,
     });
     const targetUrl = buildCanonicalUrl(sanitized, currentUser);
-    const currentUrl = `${window.location.pathname}${window.location.search}` || '/';
+    const base = normalizeBasePath();
+    const normPath =
+      base !== '/' && window.location.pathname === base.slice(0, -1)
+        ? base
+        : window.location.pathname || '/';
+    const currentUrl = `${normPath}${window.location.search}` || base;
 
     if (currentUrl !== targetUrl) {
       if (historyPushPendingRef.current) {
@@ -396,7 +402,7 @@ export default function App() {
     setSingleViewCarId(null);
     hasUrlMonthOverrideRef.current = false;
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', '/');
+      window.history.replaceState(null, '', normalizeBasePath());
     }
     showNotification('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };

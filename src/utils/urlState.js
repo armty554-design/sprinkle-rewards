@@ -37,11 +37,34 @@ const PATH_TAB_ALIASES = {
 };
 
 /**
+ * Normalizes Vite BASE_URL so both root ('/') and subpath ('/sprinkle-rewards/') deployments work cleanly.
+ */
+export function normalizeBasePath(basePath = import.meta?.env?.BASE_URL || '/') {
+  let b = String(basePath || '/').trim();
+  if (!b.startsWith('/')) b = `/${b}`;
+  if (!b.endsWith('/')) b = `${b}/`;
+  return b;
+}
+
+/**
  * Parses URL search parameters (and optional clean path aliases) into structured deep-link state.
  */
-export function parseUrlState(search = '', pathname = '/') {
+export function parseUrlState(
+  search = '',
+  pathname = '/',
+  basePath = import.meta?.env?.BASE_URL || '/'
+) {
   const params = new URLSearchParams(search || '');
-  const cleanPath = String(pathname || '/')
+  const normBase = normalizeBasePath(basePath);
+  const rawPath = String(pathname || '/');
+  let strippedPath = rawPath;
+  if (normBase !== '/') {
+    const baseNoTrail = normBase.slice(0, -1);
+    if (rawPath === baseNoTrail || rawPath.startsWith(normBase)) {
+      strippedPath = rawPath.slice(baseNoTrail.length) || '/';
+    }
+  }
+  const cleanPath = strippedPath
     .replace(/^\/+|\/+$/g, '')
     .toLowerCase();
 
@@ -177,9 +200,14 @@ export function sanitizeUrlStateForUser(
 }
 
 /**
- * Builds canonical relative URL ("/?tab=...") omitting defaults and stripping disallowed params for user role.
+ * Builds canonical relative URL ("/?tab=..." or "/sprinkle-rewards/?tab=...") omitting defaults and disallowed params.
  */
-export function buildCanonicalUrl(state = {}, user = null) {
+export function buildCanonicalUrl(
+  state = {},
+  user = null,
+  basePath = import.meta?.env?.BASE_URL || '/'
+) {
+  const normBase = normalizeBasePath(basePath);
   const canManage = isManagementRole(user);
   const effectiveTab =
     canManage && state.tab && canAccessTab(user, state.tab) ? state.tab : 'single';
@@ -221,5 +249,5 @@ export function buildCanonicalUrl(state = {}, user = null) {
   }
 
   const qs = params.toString();
-  return qs ? `/?${qs}` : '/';
+  return qs ? `${normBase}?${qs}` : normBase;
 }
