@@ -6,6 +6,7 @@ export const ALLOWED_MANAGEMENT_TABS = [
   'single',
   'vehicles',
   'analytics',
+  'kpi_board',
   'executive',
   'audit',
   'excellence_annual',

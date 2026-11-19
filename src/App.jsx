@@ -11,6 +11,7 @@ import UploadNewMonthModal from './components/UploadNewMonthModal';
 import VehicleDetailModal from './components/VehicleDetailModal';
 import VehiclePrintSlip from './components/VehiclePrintSlip';
 import BranchAnalytics from './components/BranchAnalytics';
+import KpiBoardView from './components/KpiBoardView';
 import ExecutiveComparisonView from './components/ExecutiveComparisonView';
 import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
 import AnnualExcellenceView from './components/AnnualExcellenceView';
@@ -117,7 +118,12 @@ export default function App() {
   // Active view tab & deep-linked sub-states
   const [activeTab, setActiveTab] = useState(() => initialUrl.tab || 'single'); // 'single', 'vehicles', 'analytics', ...
   const [viewMode, setViewMode] = useState('grid'); // 'grid', 'table'
-  const [execSubTab, setExecSubTab] = useState(() => initialUrl.subtab || 'branches');
+  const [execSubTab, setExecSubTab] = useState(() =>
+    ['branches', 'trend', 'head2head'].includes(initialUrl.subtab) ? initialUrl.subtab : 'branches'
+  );
+  const [kpiSubTab, setKpiSubTab] = useState(() =>
+    initialUrl.subtab === 'monthly' ? 'monthly' : 'overview'
+  );
   const [mobileTab, setMobileTab] = useState(() => {
     if (initialUrl.tab === 'executive') return 'executive';
     if (initialUrl.tab === 'audit') return 'audit';
@@ -302,7 +308,12 @@ export default function App() {
       setActiveTab(sanitized.tab || 'single');
       setSelectedCarCode(sanitized.car || null);
       setSelectedBranch(sanitized.branch || 'all');
-      setExecSubTab(sanitized.subtab || 'branches');
+      if (['branches', 'trend', 'head2head'].includes(sanitized.subtab)) {
+        setExecSubTab(sanitized.subtab);
+      }
+      if (sanitized.tab === 'kpi_board') {
+        setKpiSubTab(sanitized.subtab === 'monthly' ? 'monthly' : 'overview');
+      }
       setMobileTab(sanitized.mtab || 'summary');
     };
     window.addEventListener('popstate', handlePopState);
@@ -318,7 +329,7 @@ export default function App() {
       month: selectedMonthKey,
       car: currentSelectedVehicle?.general?.carCode || null,
       branch: selectedBranch !== 'all' ? selectedBranch : null,
-      subtab: execSubTab,
+      subtab: safeActiveTab === 'kpi_board' ? kpiSubTab : execSubTab,
       mtab: mobileTab,
     };
     const sanitized = sanitizeUrlStateForUser(currentRawState, currentUser, {
@@ -348,6 +359,7 @@ export default function App() {
     currentSelectedVehicle,
     selectedBranch,
     execSubTab,
+    kpiSubTab,
     mobileTab,
     allMonthsList,
     visibleVehicles,
@@ -371,13 +383,19 @@ export default function App() {
       if (isManagementRole(user)) {
         if (parsed.car) setSelectedCarCode(parsed.car);
         if (parsed.branch) setSelectedBranch(parsed.branch);
-        if (parsed.subtab) setExecSubTab(parsed.subtab);
+        if (['branches', 'trend', 'head2head'].includes(parsed.subtab)) {
+          setExecSubTab(parsed.subtab);
+        }
+        if (parsed.tab === 'kpi_board') {
+          setKpiSubTab(parsed.subtab === 'monthly' ? 'monthly' : 'overview');
+        }
         if (parsed.tab === 'executive') setMobileTab('executive');
         else if (parsed.tab === 'audit') setMobileTab('audit');
         else if (parsed.mtab) setMobileTab(parsed.mtab);
       } else {
         setSelectedBranch('all');
         setExecSubTab('branches');
+        setKpiSubTab('overview');
         setMobileTab(
           parsed.mtab && parsed.mtab !== 'executive' && parsed.mtab !== 'audit'
             ? parsed.mtab
@@ -398,6 +416,7 @@ export default function App() {
     setMobileTab('summary');
     setSelectedBranch('all');
     setExecSubTab('branches');
+    setKpiSubTab('overview');
     setSelectedCarCode(null);
     setSingleViewCarId(null);
     hasUrlMonthOverrideRef.current = false;
@@ -455,6 +474,15 @@ export default function App() {
     [currentUser]
   );
 
+  const handleSelectKpiSubTab = useCallback(
+    (subtab) => {
+      if (!isManagementRole(currentUser)) return;
+      historyPushPendingRef.current = true;
+      setKpiSubTab(subtab === 'monthly' ? 'monthly' : 'overview');
+    },
+    [currentUser]
+  );
+
   const handleChangeMobileTab = useCallback(
     (nextMtab) => {
       if (!isManagementRole(currentUser) && (nextMtab === 'executive' || nextMtab === 'audit')) {
@@ -478,7 +506,7 @@ export default function App() {
         month: selectedMonthKey,
         car: currentSelectedVehicle?.general?.carCode || null,
         branch: selectedBranch !== 'all' ? selectedBranch : null,
-        subtab: execSubTab,
+        subtab: safeActiveTab === 'kpi_board' ? kpiSubTab : execSubTab,
         mtab: mobileTab,
       },
       currentUser,
@@ -512,6 +540,7 @@ export default function App() {
     currentSelectedVehicle,
     selectedBranch,
     execSubTab,
+    kpiSubTab,
     mobileTab,
     visibleVehicles,
     showNotification,
@@ -953,7 +982,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
         {/* KPI Stat Cards for Current Month (เฉพาะสิทธิ์ผู้บริหาร/เจ้าหน้าที่ และซ่อนในหน้าวิเคราะห์/รายงานพิเศษเพื่อความกระชับ) */}
-        {canManage && safeActiveTab !== 'analytics' && safeActiveTab !== 'executive' && safeActiveTab !== 'audit' && safeActiveTab !== 'excellence_annual' && safeActiveTab !== 'looker_scores' && (
+        {canManage && safeActiveTab !== 'analytics' && safeActiveTab !== 'kpi_board' && safeActiveTab !== 'executive' && safeActiveTab !== 'audit' && safeActiveTab !== 'excellence_annual' && safeActiveTab !== 'looker_scores' && (
           <DashboardStats 
             summary={activeSummary} 
             onFilterChange={(key, val) => {
@@ -1043,6 +1072,21 @@ export default function App() {
             data={data}
             selectedBranch={selectedBranch}
             onSelectBranch={handleSelectBranchState}
+            onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
+          />
+        )}
+
+        {/* TAB 3.5: KPI BOARD (36 STANDARD REWARD PERFORMANCE METRICS — MANAGEMENT ONLY) */}
+        {canManage && safeActiveTab === 'kpi_board' && (
+          <KpiBoardView
+            data={data}
+            allMonthsList={allMonthsList}
+            selectedMonthKey={selectedMonthKey}
+            onSelectMonth={handleSelectMonth}
+            selectedBranch={selectedBranch}
+            onSelectBranch={handleSelectBranchState}
+            subTab={kpiSubTab}
+            onSelectSubTab={handleSelectKpiSubTab}
             onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
           />
         )}

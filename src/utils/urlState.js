@@ -6,6 +6,7 @@ export const VALID_TABS = [
   'single',
   'vehicles',
   'analytics',
+  'kpi_board',
   'executive',
   'audit',
   'excellence_annual',
@@ -23,11 +24,15 @@ export const VALID_MOBILE_TABS = [
 export const RESTRICTED_MOBILE_TABS = ['summary', 'defects', 'all_items'];
 
 export const VALID_EXEC_SUBTABS = ['branches', 'trend', 'head2head'];
+export const VALID_KPI_SUBTABS = ['overview', 'monthly'];
+export const VALID_SUBTABS = [...VALID_EXEC_SUBTABS, ...VALID_KPI_SUBTABS];
 
 const PATH_TAB_ALIASES = {
   single: 'single',
   vehicles: 'vehicles',
   analytics: 'analytics',
+  kpi: 'kpi_board',
+  kpi_board: 'kpi_board',
   executive: 'executive',
   audit: 'audit',
   excellence: 'excellence_annual',
@@ -96,7 +101,7 @@ export function parseUrlState(
     rawBranch && rawBranch.toLowerCase() !== 'all' ? rawBranch : null;
 
   const rawSubtab = String(params.get('subtab') || '').trim();
-  const subtab = VALID_EXEC_SUBTABS.includes(rawSubtab) ? rawSubtab : null;
+  const subtab = VALID_SUBTABS.includes(rawSubtab) ? rawSubtab : null;
 
   const rawMtab = String(params.get('mtab') || '').trim();
   const mtab = VALID_MOBILE_TABS.includes(rawMtab) ? rawMtab : null;
@@ -237,6 +242,7 @@ export function buildCanonicalUrl(
   if (canManage) {
     if (
       (effectiveTab === 'analytics' ||
+        effectiveTab === 'kpi_board' ||
         effectiveTab === 'vehicles' ||
         effectiveTab === 'executive') &&
       state.branch &&
@@ -245,7 +251,21 @@ export function buildCanonicalUrl(
       params.set('branch', state.branch);
     }
 
-    if (effectiveTab === 'executive' && state.subtab && state.subtab !== 'branches') {
+    if (
+      effectiveTab === 'executive' &&
+      state.subtab &&
+      VALID_EXEC_SUBTABS.includes(state.subtab) &&
+      state.subtab !== 'branches'
+    ) {
+      params.set('subtab', state.subtab);
+    }
+
+    if (
+      effectiveTab === 'kpi_board' &&
+      state.subtab &&
+      VALID_KPI_SUBTABS.includes(state.subtab) &&
+      state.subtab !== 'overview'
+    ) {
       params.set('subtab', state.subtab);
     }
   }

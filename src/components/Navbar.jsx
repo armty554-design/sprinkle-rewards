@@ -9,7 +9,8 @@ import {
   ChevronDown, 
   TrendingUp, 
   Trophy,
-  Sparkles
+  Sparkles,
+  Activity
 } from 'lucide-react';
 import { isManagementRole } from '../utils/authHelpers';
 
@@ -156,6 +157,20 @@ export default function Navbar({
               >
                 <BarChart2 className={`w-3.5 h-3.5 ${activeTab === 'analytics' ? 'text-sky-500' : 'text-slate-400'}`} />
                 <span>สถิติ<span className="hidden sm:inline">สาขา</span></span>
+              </button>
+
+              {/* Tab 3.5: ตารางกราฟ KPI (ครบทั้ง 36 หัวข้อผลงานรางวัลมาตรฐาน) */}
+              <button
+                onClick={() => setActiveTab('kpi_board')}
+                className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                  activeTab === 'kpi_board'
+                    ? 'bg-sky-600 text-white font-bold shadow-xs ring-1 ring-sky-500/30'
+                    : 'text-sky-800 hover:text-sky-950 bg-sky-50/80 hover:bg-sky-100/80 border border-sky-200/80 font-semibold'
+                }`}
+                title="ตารางกราฟ KPI ผลงานรางวัลมาตรฐานครบทุกหัวข้อ แยกสาขาและเดือน"
+              >
+                <Activity className={`w-3.5 h-3.5 ${activeTab === 'kpi_board' ? 'text-white' : 'text-sky-600'}`} />
+                <span>ตารางกราฟ KPI</span>
               </button>
 
               {/* Divider */}
