@@ -107,8 +107,10 @@ export default function ExecutiveComparisonView({
 
       const totalRewards = bVehicles.reduce((sum, v) => sum + (v.totals?.totalReward || 0), 0);
       const avgReward = Math.round(totalRewards / totalVehicles);
-      const qualifiedCount = bVehicles.filter(v => v.general.qualified).length;
-      const qualifiedPercent = Math.round((qualifiedCount / totalVehicles) * 100);
+      const eligibleCount = bVehicles.filter(v => v.general.qualified).length;
+      const eligiblePercent = Math.round((eligibleCount / totalVehicles) * 100);
+      const passCount = bVehicles.filter(v => Number(v.totals?.totalPercent || 0) >= 85).length;
+      const passPercent = Math.round((passCount / totalVehicles) * 100);
       const withRewardCount = bVehicles.filter(v => (v.totals?.totalReward || 0) > 0).length;
       const withRewardPercent = Math.round((withRewardCount / totalVehicles) * 100);
       const totalPendingDeductions = bVehicles.reduce((sum, v) => sum + (v.totals?.pendingDeduction || 0), 0);
@@ -148,7 +150,7 @@ export default function ExecutiveComparisonView({
 
       // Weighted Executive Performance Index (0 - 100)
       const performanceIndex = Math.min(100, Math.round(
-        (qualifiedPercent * 0.4) + 
+        (eligiblePercent * 0.4) + 
         (Math.min(100, (avgReward / 3500) * 100) * 0.3) + 
         (cleanPercent * 0.3)
       ));
@@ -158,8 +160,10 @@ export default function ExecutiveComparisonView({
         totalVehicles,
         totalRewards,
         avgReward,
-        qualifiedCount,
-        qualifiedPercent,
+        eligibleCount,
+        eligiblePercent,
+        passCount,
+        passPercent,
         withRewardCount,
         withRewardPercent,
         totalPendingDeductions,
@@ -190,8 +194,8 @@ export default function ExecutiveComparisonView({
     const totalVehicles = branchComparisonData.reduce((s, b) => s + b.totalVehicles, 0);
     const totalRewards = branchComparisonData.reduce((s, b) => s + b.totalRewards, 0);
     const avgReward = totalVehicles > 0 ? Math.round(totalRewards / totalVehicles) : 0;
-    const qualifiedCount = branchComparisonData.reduce((s, b) => s + b.qualifiedCount, 0);
-    const qualifiedPercent = totalVehicles > 0 ? Math.round((qualifiedCount / totalVehicles) * 100) : 0;
+    const passCount = branchComparisonData.reduce((s, b) => s + b.passCount, 0);
+    const passPercent = totalVehicles > 0 ? Math.round((passCount / totalVehicles) * 100) : 0;
     const totalPendingDeductions = branchComparisonData.reduce((s, b) => s + b.totalPendingDeductions, 0);
     const totalComplaints = branchComparisonData.reduce((s, b) => s + b.complaintsCount, 0);
     const totalWarnings = branchComparisonData.reduce((s, b) => s + b.warningLetters, 0);
@@ -201,8 +205,8 @@ export default function ExecutiveComparisonView({
       totalVehicles,
       totalRewards,
       avgReward,
-      qualifiedCount,
-      qualifiedPercent,
+      passCount,
+      passPercent,
       totalPendingDeductions,
       totalComplaints,
       totalWarnings,
@@ -229,8 +233,8 @@ export default function ExecutiveComparisonView({
 
       const totalRewards = vehicles.reduce((sum, v) => sum + (v.totals?.totalReward || 0), 0);
       const avgReward = Math.round(totalRewards / totalVehicles);
-      const qualifiedCount = vehicles.filter(v => v.general.qualified).length;
-      const qualifiedPercent = Math.round((qualifiedCount / totalVehicles) * 100);
+      const passCount = vehicles.filter(v => Number(v.totals?.totalPercent || 0) >= 85).length;
+      const passPercent = Math.round((passCount / totalVehicles) * 100);
       const totalPendingDeductions = vehicles.reduce((sum, v) => sum + (v.totals?.pendingDeduction || 0), 0);
       const defectCount = vehicles.reduce((sum, v) => sum + (v.defects?.length || 0), 0);
 
@@ -243,8 +247,8 @@ export default function ExecutiveComparisonView({
         totalVehicles,
         totalRewards,
         avgReward,
-        qualifiedCount,
-        qualifiedPercent,
+        passCount,
+        passPercent,
         totalPendingDeductions,
         defectCount,
         branches: branchesInMonth
@@ -263,7 +267,7 @@ export default function ExecutiveComparisonView({
       if (prevMonth && prevMonth.totalRewards > 0) {
         rewardDelta = item.totalRewards - prevMonth.totalRewards;
         rewardDeltaPercent = Math.round(((item.totalRewards - prevMonth.totalRewards) / prevMonth.totalRewards) * 100);
-        passRateDelta = item.qualifiedPercent - prevMonth.qualifiedPercent;
+        passRateDelta = item.passPercent - prevMonth.passPercent;
       }
 
       return {
@@ -297,8 +301,8 @@ export default function ExecutiveComparisonView({
       const totalVehicles = vList.length;
       const totalRewards = vList.reduce((sum, v) => sum + (v.totals?.totalReward || 0), 0);
       const avgReward = totalVehicles > 0 ? Math.round(totalRewards / totalVehicles) : 0;
-      const qualifiedCount = vList.filter(v => v.general.qualified).length;
-      const qualifiedPercent = totalVehicles > 0 ? Math.round((qualifiedCount / totalVehicles) * 100) : 0;
+      const passCount = vList.filter(v => Number(v.totals?.totalPercent || 0) >= 85).length;
+      const passPercent = totalVehicles > 0 ? Math.round((passCount / totalVehicles) * 100) : 0;
       const cleanCount = vList.filter(v => !v.defects || v.defects.length === 0).length;
       const pendingDeductions = vList.reduce((sum, v) => sum + (v.totals?.pendingDeduction || 0), 0);
       const totalDefects = vList.reduce((sum, v) => sum + (v.defects?.length || 0), 0);
@@ -313,8 +317,8 @@ export default function ExecutiveComparisonView({
         totalVehicles,
         totalRewards,
         avgReward,
-        qualifiedCount,
-        qualifiedPercent,
+        passCount,
+        passPercent,
         cleanCount,
         pendingDeductions,
         totalDefects,
@@ -343,7 +347,7 @@ export default function ExecutiveComparisonView({
         totalRewards: sumB.totalRewards - sumA.totalRewards,
         totalRewardsPercent: sumA.totalRewards > 0 ? Math.round(((sumB.totalRewards - sumA.totalRewards) / sumA.totalRewards) * 100) : 0,
         avgReward: sumB.avgReward - sumA.avgReward,
-        qualifiedPercent: sumB.qualifiedPercent - sumA.qualifiedPercent,
+        passPercent: sumB.passPercent - sumA.passPercent,
         pendingDeductions: sumB.pendingDeductions - sumA.pendingDeductions,
         totalDefects: sumB.totalDefects - sumA.totalDefects,
         totalComplaints: sumB.totalComplaints - sumA.totalComplaints,
@@ -459,12 +463,12 @@ export default function ExecutiveComparisonView({
             </div>
 
             <div className="bg-white/5 rounded-2xl p-3 sm:p-4 border border-white/10">
-              <span className="text-[11px] text-slate-400 font-medium block">อัตราผ่านเกณฑ์มาตรฐาน</span>
+              <span className="text-[11px] text-slate-400 font-medium block">อัตราผ่านเกณฑ์มาตรฐาน (≥85%)</span>
               <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-0.5">
-                {companySummary.qualifiedPercent}%
+                {companySummary.passPercent}%
               </div>
               <span className="text-[10px] text-slate-300 block mt-0.5">
-                ผ่าน {companySummary.qualifiedCount} จาก {companySummary.totalVehicles} คัน
+                ผ่าน {companySummary.passCount} จาก {companySummary.totalVehicles} คัน
               </span>
             </div>
 
@@ -542,7 +546,7 @@ export default function ExecutiveComparisonView({
                   <span>อันดับและประสิทธิภาพผลงานรายสาขา</span>
                 </h2>
                 <p className="text-xs text-slate-500">
-                  เปรียบเทียบอัตราผ่านเกณฑ์ ยอดจ่ายรางวัลเฉลี่ย และคะแนนมาตรฐานการปฏิบัติงานของแต่ละสาขา
+                  เปรียบเทียบอัตราผ่านเกณฑ์ (≥85%) ยอดจ่ายรางวัลเฉลี่ย และคะแนนมาตรฐานการปฏิบัติงานของแต่ละสาขา
                 </p>
               </div>
             </div>
@@ -604,15 +608,15 @@ export default function ExecutiveComparisonView({
                         </div>
 
                         <div>
-                          <span className="text-[10px] text-slate-400 font-semibold block">อัตราผ่านเกณฑ์</span>
+                          <span className="text-[10px] text-slate-400 font-semibold block">อัตราผ่านเกณฑ์ (≥85%)</span>
                           <strong className={`text-base font-black ${
-                            branch.qualifiedPercent >= 90 ? 'text-emerald-600' :
-                            branch.qualifiedPercent >= 80 ? 'text-amber-600' : 'text-rose-600'
+                            branch.passPercent >= 90 ? 'text-emerald-600' :
+                            branch.passPercent >= 80 ? 'text-amber-600' : 'text-rose-600'
                           }`}>
-                            {branch.qualifiedPercent}%
+                            {branch.passPercent}%
                           </strong>
                           <span className="text-[10px] text-slate-500 block mt-0.5">
-                            ผ่าน {branch.qualifiedCount}/{branch.totalVehicles} คัน
+                            ผ่าน {branch.passCount}/{branch.totalVehicles} คัน
                           </span>
                         </div>
                       </div>
@@ -766,22 +770,28 @@ export default function ExecutiveComparisonView({
                     )}
                   </tr>
 
-                  {/* Qualified Rate */}
+                  {/* Standard Pass Rate (>= 85%) */}
                   <tr className="hover:bg-slate-50/50">
-                    <td className="py-3 px-4 font-semibold text-slate-800">อัตราผ่านเกณฑ์ (%)</td>
+                    <td className="py-3 px-4 font-semibold text-slate-800">อัตราผ่านเกณฑ์ ≥85% (%)</td>
                     {branchComparisonData.map(b => (
                       <td key={b.branchName} className="py-3 px-4 text-right">
                         <span className={`inline-block px-2 py-0.5 rounded-md font-bold ${
-                          b.qualifiedPercent >= 90 ? 'bg-emerald-100 text-emerald-800' :
-                          b.qualifiedPercent >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                          b.passPercent >= 90 ? 'bg-emerald-100 text-emerald-800' :
+                          b.passPercent >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
                         }`}>
-                          {b.qualifiedPercent}%
+                          {b.passPercent}%
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          {b.passCount}/{b.totalVehicles} คัน
                         </span>
                       </td>
                     ))}
                     {branchComparisonData.length > 1 && (
                       <td className="py-3 px-4 text-right font-bold text-sky-900 bg-sky-50/40">
-                        {companySummary?.qualifiedPercent}%
+                        {companySummary?.passPercent}%
+                        <span className="text-[10px] text-sky-700/70 font-medium block mt-0.5">
+                          {companySummary?.passCount}/{companySummary?.totalVehicles} คัน
+                        </span>
                       </td>
                     )}
                   </tr>
@@ -974,7 +984,7 @@ export default function ExecutiveComparisonView({
                 <p className="text-xs text-slate-300 leading-relaxed">
                   {companySummary?.topBranch ? (
                     <>
-                      สาขา <strong>{companySummary.topBranch.branchName}</strong> มีอัตราผ่านเกณฑ์สูงสุดถึง <strong>{companySummary.topBranch.qualifiedPercent}%</strong> และยอดเงินรางวัลเฉลี่ย <strong>฿{companySummary.topBranch.avgReward.toLocaleString()}</strong> ต่อคัน สะท้อนถึงการควบคุมวินัยจัดส่งและบริการที่ได้มาตรฐาน
+                      สาขา <strong>{companySummary.topBranch.branchName}</strong> ครองอันดับ 1 ด้วยอัตราผ่านเกณฑ์มาตรฐาน (≥85%) <strong>{companySummary.topBranch.passPercent}%</strong> ({companySummary.topBranch.passCount}/{companySummary.topBranch.totalVehicles} คัน) และยอดเงินรางวัลเฉลี่ย <strong>฿{companySummary.topBranch.avgReward.toLocaleString()}</strong> ต่อคัน สะท้อนถึงการควบคุมวินัยจัดส่งและบริการที่ได้มาตรฐาน
                     </>
                   ) : 'ภาพรวมผลงานทุกสาขาอยู่ในเกณฑ์ควบคุม'}
                 </p>
@@ -1076,7 +1086,7 @@ export default function ExecutiveComparisonView({
                   <span className="text-xs text-slate-400">เทียบเดือนก่อน</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-                  กองรถ {trendWithDelta[0].totalVehicles} คัน | ผ่านเกณฑ์ {trendWithDelta[0].qualifiedPercent}%
+                  กองรถ {trendWithDelta[0].totalVehicles} คัน | ผ่านเกณฑ์ (≥85%) {trendWithDelta[0].passPercent}% ({trendWithDelta[0].passCount}/{trendWithDelta[0].totalVehicles} คัน)
                 </p>
               </div>
             )}
@@ -1096,7 +1106,7 @@ export default function ExecutiveComparisonView({
                     {peakMonth.label}
                   </div>
                   <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-                    เฉลี่ย ฿{peakMonth.avgReward.toLocaleString()} / คัน | ผ่านเกณฑ์ {peakMonth.qualifiedPercent}%
+                    เฉลี่ย ฿{peakMonth.avgReward.toLocaleString()} / คัน | ผ่านเกณฑ์ (≥85%) {peakMonth.passPercent}% ({peakMonth.passCount}/{peakMonth.totalVehicles} คัน)
                   </p>
                 </div>
               );
@@ -1128,7 +1138,7 @@ export default function ExecutiveComparisonView({
                 <span>ตารางแนวโน้มผลงานและงบประมาณรางวัลย้อนหลัง (Month-over-Month History)</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                ติดตามการเปลี่ยนแปลงของยอดจ่ายเงินรางวัล อัตราผ่านเกณฑ์ และความผันแปรของผลงานในแต่ละงวด
+                ติดตามการเปลี่ยนแปลงของยอดจ่ายเงินรางวัล อัตราผ่านเกณฑ์ (≥85%) และความผันแปรของผลงานในแต่ละงวด
               </p>
             </div>
 
@@ -1138,7 +1148,7 @@ export default function ExecutiveComparisonView({
                   <tr className="border-b border-slate-200 bg-slate-50/80">
                     <th className="py-3 px-4 font-bold text-slate-700">เดือน / งวดประเมิน</th>
                     <th className="py-3 px-4 font-bold text-slate-700 text-center">จำนวนรถ</th>
-                    <th className="py-3 px-4 font-bold text-slate-700 text-center">อัตราผ่านเกณฑ์</th>
+                    <th className="py-3 px-4 font-bold text-slate-700 text-center">อัตราผ่านเกณฑ์ (≥85%)</th>
                     <th className="py-3 px-4 font-bold text-slate-700 text-right">เงินรางวัลรวม</th>
                     <th className="py-3 px-4 font-bold text-slate-700 text-right">เฉลี่ย / คัน</th>
                     <th className="py-3 px-4 font-bold text-slate-700 text-right">ผลต่างเทียบเดือนก่อน</th>
@@ -1175,11 +1185,14 @@ export default function ExecutiveComparisonView({
 
                         <td className="py-3.5 px-4 text-center">
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-black ${
-                            row.qualifiedPercent >= 90 ? 'bg-emerald-100 text-emerald-800' :
-                            row.qualifiedPercent >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                            row.passPercent >= 90 ? 'bg-emerald-100 text-emerald-800' :
+                            row.passPercent >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
                           }`}>
-                            {row.qualifiedPercent}%
+                            {row.passPercent}%
                           </span>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {row.passCount}/{row.totalVehicles} คัน
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
@@ -1370,18 +1383,28 @@ export default function ExecutiveComparisonView({
                       </td>
                     </tr>
 
-                    {/* Qualified % */}
+                    {/* Standard Pass % (>= 85%) */}
                     <tr className="hover:bg-slate-50/50">
-                      <td className="py-3 px-4 font-semibold text-slate-800">อัตราผ่านเกณฑ์ (%)</td>
-                      <td className="py-3 px-4 text-right font-bold">{h2hData.monthA.summary.qualifiedPercent}%</td>
-                      <td className="py-3 px-4 text-right font-black text-sky-900 bg-sky-50/30">{h2hData.monthB.summary.qualifiedPercent}%</td>
+                      <td className="py-3 px-4 font-semibold text-slate-800">อัตราผ่านเกณฑ์ ≥85% (%)</td>
                       <td className="py-3 px-4 text-right font-bold">
-                        <span className={h2hData.delta.qualifiedPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                          {h2hData.delta.qualifiedPercent >= 0 ? `+${h2hData.delta.qualifiedPercent}%` : `${h2hData.delta.qualifiedPercent}%`}
+                        {h2hData.monthA.summary.passPercent}%{' '}
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          ({h2hData.monthA.summary.passCount}/{h2hData.monthA.summary.totalVehicles})
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-sky-900 bg-sky-50/30">
+                        {h2hData.monthB.summary.passPercent}%{' '}
+                        <span className="text-[10px] text-sky-700/70 font-normal">
+                          ({h2hData.monthB.summary.passCount}/{h2hData.monthB.summary.totalVehicles})
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold">
+                        <span className={h2hData.delta.passPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                          {h2hData.delta.passPercent >= 0 ? `+${h2hData.delta.passPercent}%` : `${h2hData.delta.passPercent}%`}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {h2hData.delta.qualifiedPercent >= 0 ? (
+                        {h2hData.delta.passPercent >= 0 ? (
                           <span className="text-emerald-600 font-bold">ผ่านเพิ่มขึ้น</span>
                         ) : (
                           <span className="text-rose-600 font-bold">ผ่านลดลง</span>
