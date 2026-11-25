@@ -588,6 +588,10 @@ export default function MobileVehicleView({
                 onSelectSubTab={onSelectExecSubTab}
                 trendBranchFilter={trendBranchFilter}
                 onSelectTrendBranch={onSelectTrendBranch}
+                onSelectVehicle={(v) => {
+                  if (typeof onSelectVehicle === 'function') onSelectVehicle(v);
+                  setMobileTab('defects');
+                }}
               />
             </Suspense>
           </div>

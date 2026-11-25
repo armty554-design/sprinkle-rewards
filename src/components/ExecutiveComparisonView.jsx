@@ -22,10 +22,53 @@ import {
   Info, 
   FileSpreadsheet,
   PlusCircle,
-  FileText
+  FileText,
+  X,
+  Search,
+  User,
+  MapPin,
+  ExternalLink
 } from 'lucide-react';
 import { getCachedParsedMonth } from '../utils/parser.js';
 import { formatThaiMonthLabel } from '../utils/monthStorage.js';
+
+const COMPLAINT_CODES = ['1.3', '2.2', '2.3', '2.5', '2.6', '4.4', '4.5'];
+
+function isComplaintDefect(d) {
+  if (!d) return false;
+  return COMPLAINT_CODES.includes(d.code) || Boolean(d.title?.includes('ข้อร้องเรียน'));
+}
+
+function extractComplaintRecords(vehicles = []) {
+  const records = [];
+  vehicles.forEach(v => {
+    (v.defects || []).forEach(d => {
+      if (isComplaintDefect(d)) {
+        records.push({
+          id: `${v.id}_${d.code}_${records.length}`,
+          branch: v.general?.branch || '-',
+          carCode: v.general?.carCode || '-',
+          fullName: v.general?.fullName || '-',
+          empId: v.general?.empId || '-',
+          position: v.general?.position || '-',
+          zone: v.general?.zone || '-',
+          groupNumber: v.general?.groupNumber || '',
+          supervisorLogisticsName: v.general?.supervisorLogisticsName || '',
+          code: d.code,
+          category: d.category || '',
+          title: d.title || 'ข้อร้องเรียน',
+          detail: d.detail || '',
+          impact: d.impact || '',
+          severity: d.severity || 'danger',
+          totalPercent: v.totals?.totalPercent ?? 0,
+          totalReward: v.totals?.totalReward ?? 0,
+          vehicle: v
+        });
+      }
+    });
+  });
+  return records;
+}
 
 export default function ExecutiveComparisonView({
   data,
@@ -39,7 +82,22 @@ export default function ExecutiveComparisonView({
   onSelectSubTab,
   trendBranchFilter: controlledTrendBranch,
   onSelectTrendBranch,
+  onSelectVehicle,
 }) {
+  // Interactive Complaint Drill-down Modal state
+  const [complaintModal, setComplaintModal] = useState(null); // { title, subtitle, branchFilter, codeFilter, search, records }
+
+  const openComplaintModal = ({ title, subtitle = '', records = [], defaultBranch = 'all' }) => {
+    setComplaintModal({
+      title,
+      subtitle,
+      branchFilter: defaultBranch,
+      codeFilter: 'all',
+      search: '',
+      records,
+    });
+  };
+
   // Sub-tabs in Executive View
   const [internalSubTab, setInternalSubTab] = useState('branches'); // 'branches', 'trend', 'head2head'
   const subTab = controlledSubTab || internalSubTab;
@@ -112,15 +170,15 @@ export default function ExecutiveComparisonView({
       const avgG3 = Math.round(g3Scores.reduce((a, b) => a + b, 0) / totalVehicles);
       const avgG4 = Math.round(g4Scores.reduce((a, b) => a + b, 0) / totalVehicles);
 
-      // Warning letters count & severe complaints
+      // Warning letters count & detailed complaints
       let warningLetters = 0;
-      let complaintsCount = 0;
       let damageClaimsCount = 0;
+      const complaintRecords = extractComplaintRecords(bVehicles);
+      const complaintsCount = complaintRecords.length;
 
       bVehicles.forEach(v => {
         (v.defects || []).forEach(d => {
           if (d.code === '5.2' || d.title?.includes('หนังสือเตือน')) warningLetters++;
-          if (['1.3', '2.5', '2.6', '4.4', '4.5'].includes(d.code) || d.title?.includes('ข้อร้องเรียน')) complaintsCount++;
           if (d.code === '4.5' || d.title?.includes('เรียกร้องค่าเสียหาย')) damageClaimsCount++;
         });
       });
@@ -158,6 +216,7 @@ export default function ExecutiveComparisonView({
         avgG4,
         warningLetters,
         complaintsCount,
+        complaintRecords,
         damageClaimsCount,
         fourWheelCount: fourWheelers.length,
         fourWheelAvgReward: fourWheelers.length > 0 ? Math.round(fourWheelers.reduce((s, v) => s + v.totals.totalReward, 0) / fourWheelers.length) : 0,
@@ -179,6 +238,7 @@ export default function ExecutiveComparisonView({
     const passPercent = totalVehicles > 0 ? Math.round((passCount / totalVehicles) * 100) : 0;
     const totalPendingDeductions = branchComparisonData.reduce((s, b) => s + b.totalPendingDeductions, 0);
     const totalComplaints = branchComparisonData.reduce((s, b) => s + b.complaintsCount, 0);
+    const allComplaintRecords = branchComparisonData.flatMap(b => b.complaintRecords || []);
     const totalWarnings = branchComparisonData.reduce((s, b) => s + b.warningLetters, 0);
 
     return {
@@ -190,6 +250,7 @@ export default function ExecutiveComparisonView({
       passPercent,
       totalPendingDeductions,
       totalComplaints,
+      allComplaintRecords,
       totalWarnings,
       isSummaryOnly: Boolean(data?.meta?.isSummaryOnly),
       topBranch: branchComparisonData[0] || null
@@ -288,9 +349,8 @@ export default function ExecutiveComparisonView({
       const cleanCount = vList.filter(v => !v.defects || v.defects.length === 0).length;
       const pendingDeductions = vList.reduce((sum, v) => sum + (v.totals?.pendingDeduction || 0), 0);
       const totalDefects = vList.reduce((sum, v) => sum + (v.defects?.length || 0), 0);
-      const totalComplaints = vList.reduce((sum, v) => {
-        return sum + (v.defects || []).filter(d => ['1.3', '2.5', '2.6', '4.4', '4.5'].includes(d.code)).length;
-      }, 0);
+      const complaintRecords = extractComplaintRecords(vList);
+      const totalComplaints = complaintRecords.length;
       const totalWarnings = vList.reduce((sum, v) => {
         return sum + (v.defects || []).filter(d => d.code === '5.2' || d.title?.includes('หนังสือเตือน')).length;
       }, 0);
@@ -305,6 +365,7 @@ export default function ExecutiveComparisonView({
         pendingDeductions,
         totalDefects,
         totalComplaints,
+        complaintRecords,
         totalWarnings,
         isSummaryOnly: Boolean(parsed.meta?.isSummaryOnly)
       };
@@ -474,9 +535,23 @@ export default function ExecutiveComparisonView({
                   ข้อมูลสรุปรายกลุ่ม (Looker 69) — ไม่มีข้อมูลข้อร้องเรียน/ใบเตือนรายข้อ
                 </span>
               ) : (
-                <span className="text-[10px] text-slate-300 block mt-0.5">
-                  ข้อร้องเรียน {companySummary.totalComplaints} ครั้ง | เตือน {companySummary.totalWarnings} ใบ
-                </span>
+                <div className="text-[10px] text-slate-300 flex flex-wrap items-center gap-1 mt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => openComplaintModal({
+                      title: 'รายละเอียดข้อร้องเรียนทั้งหมด (ทุกสาขา)',
+                      subtitle: `ประจำงวด ${formatThaiMonthLabel(data.meta.month || selectedMonthKey)} • รวม ${companySummary.totalComplaints} รายการ`,
+                      records: companySummary.allComplaintRecords,
+                      defaultBranch: 'all'
+                    })}
+                    className="inline-flex items-center gap-0.5 text-amber-300 hover:text-amber-200 underline decoration-amber-400/60 underline-offset-2 font-bold cursor-pointer"
+                    title="คลิกเพื่อดูรายละเอียดข้อร้องเรียนทั้งหมด"
+                  >
+                    <span>ข้อร้องเรียน {companySummary.totalComplaints} ครั้ง</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                  <span>| เตือน {companySummary.totalWarnings} ใบ</span>
+                </div>
               )}
             </div>
           </div>
@@ -672,13 +747,30 @@ export default function ExecutiveComparisonView({
                         </div>
                       ) : (
                         <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openComplaintModal({
+                              title: `รายละเอียดข้อร้องเรียน • สาขา ${branch.branchName}`,
+                              subtitle: `ประจำงวด ${formatThaiMonthLabel(data.meta.month || selectedMonthKey)} • พบ ${branch.complaintsCount} รายการ`,
+                              records: companySummary?.allComplaintRecords || branch.complaintRecords,
+                              defaultBranch: branch.branchName
+                            })}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 -ml-2 rounded-xl transition-all cursor-pointer ${
+                              branch.complaintsCount > 0
+                                ? 'bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 shadow-2xs'
+                                : 'hover:bg-slate-50 border border-transparent'
+                            }`}
+                            title="คลิกเพื่อดูรายละเอียดข้อร้องเรียนของสาขานี้"
+                          >
                             <AlertTriangle className={`w-4 h-4 ${branch.complaintsCount > 0 ? 'text-amber-500' : 'text-slate-300'}`} />
                             <span className="text-slate-600 font-medium">ข้อร้องเรียน:</span>
-                            <strong className={branch.complaintsCount > 0 ? 'text-amber-700' : 'text-slate-700'}>
+                            <strong className={branch.complaintsCount > 0 ? 'text-amber-700 underline decoration-amber-400/70 underline-offset-2' : 'text-slate-700'}>
                               {branch.complaintsCount} ครั้ง
                             </strong>
-                          </div>
+                            {branch.complaintsCount > 0 && (
+                              <ChevronRight className="w-3.5 h-3.5 text-amber-600" />
+                            )}
+                          </button>
 
                           <div className="flex items-center gap-1.5">
                             <ShieldAlert className={`w-4 h-4 ${branch.warningLetters > 0 ? 'text-rose-500' : 'text-slate-300'}`} />
@@ -885,13 +977,44 @@ export default function ExecutiveComparisonView({
 
                   {/* Complaints Count */}
                   <tr className="hover:bg-slate-50/50">
-                    <td className="py-3 px-4 font-semibold text-slate-800">ข้อร้องเรียนทั้งหมด (ครั้ง)</td>
+                    <td className="py-3 px-4 font-semibold text-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => !data?.meta?.isSummaryOnly && openComplaintModal({
+                          title: 'รายละเอียดข้อร้องเรียนทั้งหมด (ทุกสาขา)',
+                          subtitle: `ประจำงวด ${formatThaiMonthLabel(data.meta.month || selectedMonthKey)} • รวม ${companySummary?.totalComplaints || 0} รายการ`,
+                          records: companySummary?.allComplaintRecords || [],
+                          defaultBranch: 'all'
+                        })}
+                        className="inline-flex items-center gap-1 text-left font-semibold text-slate-800 hover:text-amber-700 cursor-pointer"
+                        title="คลิกเพื่อดูรายละเอียดข้อร้องเรียนทั้งหมด"
+                      >
+                        <span>ข้อร้องเรียนทั้งหมด (ครั้ง)</span>
+                        {!data?.meta?.isSummaryOnly && <ChevronRight className="w-3.5 h-3.5 text-amber-600" />}
+                      </button>
+                    </td>
                     {branchComparisonData.map(b => (
                       <td key={b.branchName} className="py-3 px-4 text-right font-bold text-amber-700">
                         {data?.meta?.isSummaryOnly ? (
                           <span className="text-xs font-medium text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
                         ) : (
-                          `${b.complaintsCount} ครั้ง`
+                          <button
+                            type="button"
+                            onClick={() => openComplaintModal({
+                              title: `รายละเอียดข้อร้องเรียน • สาขา ${b.branchName}`,
+                              subtitle: `ประจำงวด ${formatThaiMonthLabel(data.meta.month || selectedMonthKey)} • พบ ${b.complaintsCount} รายการ`,
+                              records: companySummary?.allComplaintRecords || b.complaintRecords,
+                              defaultBranch: b.branchName
+                            })}
+                            className={`inline-flex items-center justify-end gap-0.5 px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
+                              b.complaintsCount > 0
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 underline decoration-amber-400 underline-offset-2'
+                                : 'text-slate-500 hover:bg-slate-100'
+                            }`}
+                            title={`คลิกเพื่อดูข้อร้องเรียนสาขา ${b.branchName}`}
+                          >
+                            <span>{b.complaintsCount} ครั้ง</span>
+                          </button>
                         )}
                       </td>
                     ))}
@@ -900,7 +1023,19 @@ export default function ExecutiveComparisonView({
                         {data?.meta?.isSummaryOnly ? (
                           <span className="text-xs font-medium text-slate-400">-</span>
                         ) : (
-                          `${companySummary?.totalComplaints} ครั้ง`
+                          <button
+                            type="button"
+                            onClick={() => openComplaintModal({
+                              title: 'รายละเอียดข้อร้องเรียนทั้งหมด (ทุกสาขา)',
+                              subtitle: `ประจำงวด ${formatThaiMonthLabel(data.meta.month || selectedMonthKey)} • รวม ${companySummary?.totalComplaints || 0} รายการ`,
+                              records: companySummary?.allComplaintRecords || [],
+                              defaultBranch: 'all'
+                            })}
+                            className="inline-flex items-center justify-end gap-0.5 px-2 py-0.5 rounded-lg bg-amber-100/80 hover:bg-amber-200/80 text-amber-900 underline decoration-amber-500 underline-offset-2 cursor-pointer"
+                            title="คลิกเพื่อดูรายละเอียดข้อร้องเรียนทั้งหมดทุกสาขา"
+                          >
+                            <span>{companySummary?.totalComplaints} ครั้ง</span>
+                          </button>
                         )}
                       </td>
                     )}
@@ -1420,14 +1555,38 @@ export default function ExecutiveComparisonView({
                         {h2hData.monthA.summary.isSummaryOnly ? (
                           <span className="text-xs text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
                         ) : (
-                          `${h2hData.monthA.summary.totalComplaints} ครั้ง`
+                          <button
+                            type="button"
+                            onClick={() => openComplaintModal({
+                              title: `รายละเอียดข้อร้องเรียน • ${h2hData.monthA.label}`,
+                              subtitle: `รวมทั้งหมด ${h2hData.monthA.summary.totalComplaints} รายการ`,
+                              records: h2hData.monthA.summary.complaintRecords || [],
+                              defaultBranch: 'all'
+                            })}
+                            className="inline-flex items-center justify-end gap-0.5 px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold underline decoration-amber-400 underline-offset-2 cursor-pointer"
+                            title={`คลิกเพื่อดูรายละเอียดข้อร้องเรียนเดือน ${h2hData.monthA.label}`}
+                          >
+                            <span>{h2hData.monthA.summary.totalComplaints} ครั้ง</span>
+                          </button>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right font-bold bg-sky-50/30">
                         {h2hData.monthB.summary.isSummaryOnly ? (
                           <span className="text-xs font-normal text-slate-400">ไม่มีข้อมูลรายข้อ (Looker)</span>
                         ) : (
-                          `${h2hData.monthB.summary.totalComplaints} ครั้ง`
+                          <button
+                            type="button"
+                            onClick={() => openComplaintModal({
+                              title: `รายละเอียดข้อร้องเรียน • ${h2hData.monthB.label}`,
+                              subtitle: `รวมทั้งหมด ${h2hData.monthB.summary.totalComplaints} รายการ`,
+                              records: h2hData.monthB.summary.complaintRecords || [],
+                              defaultBranch: 'all'
+                            })}
+                            className="inline-flex items-center justify-end gap-0.5 px-2 py-0.5 rounded-lg bg-amber-100/80 hover:bg-amber-200/80 text-amber-900 font-bold underline decoration-amber-500 underline-offset-2 cursor-pointer"
+                            title={`คลิกเพื่อดูรายละเอียดข้อร้องเรียนเดือน ${h2hData.monthB.label}`}
+                          >
+                            <span>{h2hData.monthB.summary.totalComplaints} ครั้ง</span>
+                          </button>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right font-medium">
@@ -1456,6 +1615,256 @@ export default function ExecutiveComparisonView({
 
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* INTERACTIVE COMPLAINT DETAILS MODAL                            */}
+      {/* ============================================================== */}
+      {complaintModal && (() => {
+        const allRecords = complaintModal.records || [];
+        const modalBranches = Array.from(new Set(allRecords.map(r => r.branch).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'th'));
+        const modalCodes = Array.from(new Set(allRecords.map(r => r.code).filter(Boolean))).sort();
+
+        const filteredRecords = allRecords.filter(r => {
+          if (complaintModal.branchFilter !== 'all' && r.branch !== complaintModal.branchFilter) return false;
+          if (complaintModal.codeFilter !== 'all' && r.code !== complaintModal.codeFilter) return false;
+          if (complaintModal.search.trim()) {
+            const q = complaintModal.search.toLowerCase().trim();
+            const match =
+              r.carCode.toLowerCase().includes(q) ||
+              r.fullName.toLowerCase().includes(q) ||
+              r.empId.toLowerCase().includes(q) ||
+              r.branch.toLowerCase().includes(q) ||
+              r.zone.toLowerCase().includes(q) ||
+              r.title.toLowerCase().includes(q) ||
+              r.detail.toLowerCase().includes(q) ||
+              r.code.toLowerCase().includes(q);
+            if (!match) return false;
+          }
+          return true;
+        });
+
+        const uniqueCarsCount = new Set(filteredRecords.map(r => `${r.branch}_${r.carCode}`)).size;
+        const codeCounts = filteredRecords.reduce((acc, r) => {
+          acc[r.code] = (acc[r.code] || 0) + 1;
+          return acc;
+        }, {});
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 no-print"
+            onClick={() => setComplaintModal(null)}
+          >
+            <div
+              className="bg-white w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 px-5 py-4 sm:px-6 sm:py-5 text-white flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 mt-0.5">
+                    <AlertTriangle className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black tracking-tight">
+                      {complaintModal.title}
+                    </h3>
+                    <p className="text-xs text-amber-100 mt-0.5">
+                      {complaintModal.subtitle}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setComplaintModal(null)}
+                  className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer shrink-0"
+                  title="ปิดหน้าต่าง"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Filter & Summary Bar */}
+              <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Search input */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={complaintModal.search}
+                      onChange={(e) => setComplaintModal(prev => ({ ...prev, search: e.target.value }))}
+                      placeholder="ค้นหาเบอร์รถ, ชื่อ, รหัส, เขต..."
+                      className="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800 focus:outline-hidden focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Branch selector */}
+                  <select
+                    value={complaintModal.branchFilter}
+                    onChange={(e) => setComplaintModal(prev => ({ ...prev, branchFilter: e.target.value }))}
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800 cursor-pointer focus:outline-hidden focus:border-amber-500"
+                  >
+                    <option value="all">ทุกสาขา ({allRecords.length} รายการ)</option>
+                    {modalBranches.map(b => {
+                      const count = allRecords.filter(r => r.branch === b).length;
+                      return (
+                        <option key={b} value={b}>
+                          สาขา {b} ({count} รายการ)
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {/* Complaint code selector */}
+                  <select
+                    value={complaintModal.codeFilter}
+                    onChange={(e) => setComplaintModal(prev => ({ ...prev, codeFilter: e.target.value }))}
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800 cursor-pointer focus:outline-hidden focus:border-amber-500"
+                  >
+                    <option value="all">ทุกหัวข้อร้องเรียน</option>
+                    {modalCodes.map(c => (
+                      <option key={c} value={c}>
+                        ข้อ {c} ({allRecords.filter(r => r.code === c).length} รายการ)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Quick Summary Pills */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold">
+                      แสดง {filteredRecords.length} รายการ ({uniqueCarsCount} คัน)
+                    </span>
+                    {Object.entries(codeCounts).map(([code, cnt]) => (
+                      <span
+                        key={code}
+                        className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 font-semibold text-[11px]"
+                      >
+                        ข้อ {code}: <strong className="text-rose-600">{cnt}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  {(complaintModal.branchFilter !== 'all' || complaintModal.codeFilter !== 'all' || complaintModal.search) && (
+                    <button
+                      type="button"
+                      onClick={() => setComplaintModal(prev => ({ ...prev, branchFilter: 'all', codeFilter: 'all', search: '' }))}
+                      className="text-[11px] font-bold text-sky-600 hover:text-sky-700 cursor-pointer"
+                    >
+                      ล้างตัวกรอง
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Complaint Records List */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-3 flex-1 bg-slate-50/40">
+                {filteredRecords.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                    <h4 className="font-bold text-sm text-slate-800">ไม่พบรายการข้อร้องเรียนตามเงื่อนไขที่เลือก</h4>
+                    <p className="text-xs text-slate-400 mt-1">สาขาหรือหมวดหมู่นี้ไม่มีรถที่ถูกร้องเรียนในงวดนี้</p>
+                  </div>
+                ) : (
+                  filteredRecords.map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl p-4 border border-amber-200/90 shadow-2xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1.5 flex-1">
+                        {/* Top row: Car code, Name, Branch, Zone */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-white font-black text-xs">
+                            {item.carCode}
+                          </span>
+                          <strong className="text-sm font-black text-slate-900">
+                            {item.fullName}
+                          </strong>
+                          <span className="text-[11px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md">
+                            สาขา {item.branch}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {item.zone}
+                          </span>
+                          {item.groupNumber && (
+                            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                              กลุ่ม {item.groupNumber}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Employee ID & Supervisor metadata */}
+                        <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2">
+                          <span>รหัสพนักงาน: <strong className="text-slate-600">{item.empId}</strong> ({item.position})</span>
+                          {item.supervisorLogisticsName && (
+                            <>
+                              <span>•</span>
+                              <span>หัวหน้าสายงาน: <strong className="text-slate-600">{item.supervisorLogisticsName}</strong></span>
+                            </>
+                          )}
+                          <span>•</span>
+                          <span>คะแนนรวมทั้งเดือน: <strong className={item.totalPercent >= 85 ? 'text-emerald-600' : 'text-rose-600'}>{item.totalPercent}%</strong> (รางวัล ฿{Number(item.totalReward || 0).toLocaleString()})</span>
+                        </div>
+
+                        {/* Complaint Item Title & Detail */}
+                        <div className="pt-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200">
+                              ข้อ {item.code}
+                            </span>
+                            <span className="font-bold text-xs sm:text-sm text-rose-700">
+                              {item.title}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-700 mt-1 font-medium">
+                            {item.detail}
+                          </p>
+                          {item.impact && (
+                            <span className="inline-block mt-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/70">
+                              ผลกระทบ: {item.impact}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Drill-down to full vehicle score card if handler provided */}
+                      {typeof onSelectVehicle === 'function' && item.vehicle && (
+                        <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setComplaintModal(null);
+                              onSelectVehicle(item.vehicle);
+                            }}
+                            className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-600 text-sky-700 hover:text-white border border-sky-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span>ดูผลคะแนนรถคันนี้</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between text-xs">
+                <span className="text-slate-400">
+                  คลิกที่ปุ่ม "ดูผลคะแนนรถคันนี้" เพื่อตรวจสอบรายละเอียดคะแนนรายข้อทั้งหมดของพนักงาน
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setComplaintModal(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* PRINT-ONLY EXECUTIVE SIGNATURE FOOTER */}
       <div className="hidden print:block mt-12 pt-6 border-t border-slate-300 text-xs">

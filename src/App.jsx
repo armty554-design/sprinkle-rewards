@@ -1116,6 +1116,7 @@ export default function App() {
               onSelectSubTab={handleSelectExecSubTab}
               trendBranchFilter={selectedBranch}
               onSelectTrendBranch={handleSelectBranchState}
+              onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
             />
           )}
 
