@@ -24,27 +24,8 @@ import {
   PlusCircle,
   FileText
 } from 'lucide-react';
-import { parseCSVData } from '../utils/parser.js';
+import { getCachedParsedMonth } from '../utils/parser.js';
 import { formatThaiMonthLabel } from '../utils/monthStorage.js';
-
-// Cache for parsed historical months so navigation is instant
-const parsedMonthsCache = new Map();
-
-function getCachedParsedMonth(monthObj) {
-  if (!monthObj || !monthObj.csv) return null;
-  const cacheKey = `${monthObj.key}_${monthObj.csv.length}`;
-  if (parsedMonthsCache.has(cacheKey)) {
-    return parsedMonthsCache.get(cacheKey);
-  }
-  try {
-    const parsed = parseCSVData(monthObj.csv);
-    parsedMonthsCache.set(cacheKey, parsed);
-    return parsed;
-  } catch (err) {
-    console.error(`Failed to parse month ${monthObj.key}:`, err);
-    return null;
-  }
-}
 
 export default function ExecutiveComparisonView({
   data,
@@ -215,9 +196,9 @@ export default function ExecutiveComparisonView({
     };
   }, [branchComparisonData, data]);
 
-  // 3. MULTI-MONTH HISTORICAL TREND DATA
+  // 3. MULTI-MONTH HISTORICAL TREND DATA (lazily computed only when 'trend' sub-tab is opened)
   const historicalTrendData = useMemo(() => {
-    if (!allMonthsList || allMonthsList.length === 0) return [];
+    if (subTab !== 'trend' || !allMonthsList || allMonthsList.length === 0) return [];
 
     return allMonthsList.map(mObj => {
       const parsed = getCachedParsedMonth(mObj);
@@ -254,7 +235,7 @@ export default function ExecutiveComparisonView({
         branches: branchesInMonth
       };
     }).filter(Boolean);
-  }, [allMonthsList, trendBranchFilter]);
+  }, [subTab, allMonthsList, trendBranchFilter]);
 
   // Compute MoM Delta for Trend
   const trendWithDelta = useMemo(() => {
@@ -286,8 +267,9 @@ export default function ExecutiveComparisonView({
     return Math.max(...trendWithDelta.map(t => t.totalRewards), 1);
   }, [trendWithDelta]);
 
-  // 4. HEAD-TO-HEAD MONTH A VS MONTH B DATA
+  // 4. HEAD-TO-HEAD MONTH A VS MONTH B DATA (lazily computed only when 'head2head' sub-tab is opened)
   const h2hData = useMemo(() => {
+    if (subTab !== 'head2head') return null;
     const monthAObj = allMonthsList.find(m => m.key === h2hMonthA);
     const monthBObj = allMonthsList.find(m => m.key === h2hMonthB);
 
@@ -354,7 +336,7 @@ export default function ExecutiveComparisonView({
         totalWarnings: sumB.totalWarnings - sumA.totalWarnings
       }
     };
-  }, [allMonthsList, h2hMonthA, h2hMonthB]);
+  }, [subTab, allMonthsList, h2hMonthA, h2hMonthB]);
 
   // Handle Print Action
   const handlePrint = () => {

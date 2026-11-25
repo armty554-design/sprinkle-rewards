@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { 
   Coins, 
   AlertTriangle, 
@@ -22,9 +22,10 @@ import {
   Link2,
   Check
 } from 'lucide-react';
-import ExecutiveComparisonView from './ExecutiveComparisonView';
-import BranchSubmissionAuditView from './BranchSubmissionAuditView';
 import { isManagementRole } from '../utils/authHelpers';
+
+const ExecutiveComparisonView = lazy(() => import('./ExecutiveComparisonView'));
+const BranchSubmissionAuditView = lazy(() => import('./BranchSubmissionAuditView'));
 
 export default function MobileVehicleView({ 
   vehicle, 
@@ -574,19 +575,21 @@ export default function MobileVehicleView({
         {/* TAB 4: EXECUTIVE COMPARISON VIEW (FOR SUPERVISORS / MANAGERS) */}
         {mobileTab === 'executive' && isSupervisor && currentMonthData && (
           <div className="space-y-4">
-            <ExecutiveComparisonView
-              data={currentMonthData}
-              allMonthsList={allMonths}
-              selectedMonthKey={selectedMonthKey}
-              onSelectMonth={onSelectMonth}
-              currentUser={currentUser}
-              onOpenUploadModal={onOpenUploadModal}
-              onOpenDataManager={onOpenDataManager}
-              subTab={execSubTab}
-              onSelectSubTab={onSelectExecSubTab}
-              trendBranchFilter={trendBranchFilter}
-              onSelectTrendBranch={onSelectTrendBranch}
-            />
+            <Suspense fallback={<div className="py-12 text-center text-xs text-slate-400 font-medium">กำลังโหลดข้อมูลผู้บริหาร...</div>}>
+              <ExecutiveComparisonView
+                data={currentMonthData}
+                allMonthsList={allMonths}
+                selectedMonthKey={selectedMonthKey}
+                onSelectMonth={onSelectMonth}
+                currentUser={currentUser}
+                onOpenUploadModal={onOpenUploadModal}
+                onOpenDataManager={onOpenDataManager}
+                subTab={execSubTab}
+                onSelectSubTab={onSelectExecSubTab}
+                trendBranchFilter={trendBranchFilter}
+                onSelectTrendBranch={onSelectTrendBranch}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -604,14 +607,16 @@ export default function MobileVehicleView({
                 <span>กลับ</span>
               </button>
             </div>
-            <BranchSubmissionAuditView
-              data={currentMonthData}
-              allMonthsList={allMonths}
-              selectedMonthKey={selectedMonthKey}
-              onSelectMonth={onSelectMonth}
-              currentUser={currentUser}
-              onOpenUploadModal={onOpenUploadModal}
-            />
+            <Suspense fallback={<div className="py-12 text-center text-xs text-slate-400 font-medium">กำลังโหลดหน้าตรวจสอบข้อมูล...</div>}>
+              <BranchSubmissionAuditView
+                data={currentMonthData}
+                allMonthsList={allMonths}
+                selectedMonthKey={selectedMonthKey}
+                onSelectMonth={onSelectMonth}
+                currentUser={currentUser}
+                onOpenUploadModal={onOpenUploadModal}
+              />
+            </Suspense>
           </div>
         )}
 

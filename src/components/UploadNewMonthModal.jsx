@@ -18,7 +18,7 @@ import {
   Square,
   ListFilter
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@e965/xlsx';
 import Papa from 'papaparse';
 import { parseCSVData, splitLookerCsvByMonth, normalizeDetailedSheetRows } from '../utils/parser';
 import { MASTER_LATEST_SHEET_URL } from '../utils/sheetWorkbookSync';

@@ -18,12 +18,14 @@ import {
   Building2,
   Calendar
 } from 'lucide-react';
+import Papa from 'papaparse';
 import { idbGetItem, idbSetItem } from '../utils/idbStorage';
+import { sanitizeCsvCell } from '../utils/parser';
 
 const STORAGE_KEY = 'sprinkle_looker_scores_csv';
 const STORAGE_SYNC_TIME_KEY = 'sprinkle_looker_scores_sync_time';
 const STORAGE_SYNC_TS_KEY = 'sprinkle_looker_scores_sync_ts';
-const LOOKER_AUTO_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const LOOKER_AUTO_SYNC_COOLDOWN_MS = 30 * 60 * 1000;
 const SPREADSHEET_ID = '1GdiQEkdAUT8JLMQEnaFOlV6o5goWm2j_v1HXney7hZc';
 const GID_LOOKER_SCORES = '2115397650';
 
@@ -43,7 +45,7 @@ export default function LookerScoresView() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
-  // Load cached CSV from IndexedDB on mount and auto-refresh silently if stale (>5 min)
+  // Load cached CSV from IndexedDB on mount and auto-refresh silently if stale (>30 min)
   useEffect(() => {
     async function loadCache() {
       try {
@@ -75,8 +77,10 @@ export default function LookerScoresView() {
     }
 
     try {
-      const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID_LOOKER_SCORES}&_t=${Date.now()}`;
-      const res = await fetch(url, { cache: 'no-store' });
+      const url = silent
+        ? `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID_LOOKER_SCORES}`
+        : `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GID_LOOKER_SCORES}&_t=${Date.now()}`;
+      const res = await fetch(url, silent ? { cache: 'default' } : { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
 
       const text = await res.text();
@@ -109,47 +113,12 @@ export default function LookerScoresView() {
     }
   };
 
-  // Parse CSV properly handling quotes and newlines
+  // Parse CSV via PapaParse (eliminating redundant manual character-by-character parser)
   const parsedData = useMemo(() => {
     if (!csvText) return { headers: [], rows: [], months: [], branches: [] };
 
-    const parsedRows = [];
-    let currentRow = [];
-    let currentVal = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < csvText.length; i++) {
-      const char = csvText[i];
-      const nextChar = csvText[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          currentVal += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        currentRow.push(currentVal.trim());
-        currentVal = '';
-      } else if ((char === '\r' || char === '\n') && !inQuotes) {
-        if (char === '\r' && nextChar === '\n') {
-          i++;
-        }
-        currentRow.push(currentVal.trim());
-        if (currentRow.some(c => c !== '')) {
-          parsedRows.push(currentRow);
-        }
-        currentRow = [];
-        currentVal = '';
-      } else {
-        currentVal += char;
-      }
-    }
-    if (currentVal || currentRow.length > 0) {
-      currentRow.push(currentVal.trim());
-      if (currentRow.some(c => c !== '')) parsedRows.push(currentRow);
-    }
+    const parsed = Papa.parse(csvText, { skipEmptyLines: true });
+    const parsedRows = (parsed.data || []).map(row => row.map(cell => String(cell ?? '').trim()));
 
     if (parsedRows.length === 0) return { headers: [], rows: [], months: [], branches: [] };
 
@@ -322,14 +291,33 @@ export default function LookerScoresView() {
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, page, pageSize]);
 
-  // Export filtered to CSV
+  // Export filtered to CSV (sanitized against Spreadsheet Formula Injection)
   const handleExportCSV = () => {
     if (filteredRows.length === 0) return;
-    const headerLine = 'ลำดับ,สาขา,เดือน,รหัสพนักงาน,เบอร์รถ,ชื่อ-สกุล,ตำแหน่ง,ยอดส่ง(ถัง),กลุ่มงานจัดส่ง(%),กลุ่มงานบริการ(%),กลุ่มงานเอกสาร(%),กลุ่มงานภาพลักษณ์(%),เปอร์เซ็นต์ทั้งหมด(%),รวมเงินรางวัล(บาท),สถานะ';
-    const bodyLines = filteredRows.map(r => 
-      `${r.no},"${r.branch}","${r.month}","${r.empId}","${r.carNo}","${r.name}","${r.position}",${r.deliveries},${r.pctG1},${r.pctG2},${r.pctG3},${r.pctG4},${r.totalPct},${r.totalReward},"${r.isPass ? 'ผ่านเกณฑ์' : 'ไม่ผ่าน'}"`
-    );
-    const blob = new Blob(['\uFEFF' + [headerLine, ...bodyLines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const headers = [
+      'ลำดับ', 'สาขา', 'เดือน', 'รหัสพนักงาน', 'เบอร์รถ', 'ชื่อ-สกุล', 'ตำแหน่ง',
+      'ยอดส่ง(ถัง)', 'กลุ่มงานจัดส่ง(%)', 'กลุ่มงานบริการ(%)', 'กลุ่มงานเอกสาร(%)',
+      'กลุ่มงานภาพลักษณ์(%)', 'เปอร์เซ็นต์ทั้งหมด(%)', 'รวมเงินรางวัล(บาท)', 'สถานะ'
+    ];
+    const rows = filteredRows.map(r => [
+      r.no,
+      sanitizeCsvCell(r.branch),
+      sanitizeCsvCell(r.month),
+      sanitizeCsvCell(r.empId),
+      sanitizeCsvCell(r.carNo),
+      sanitizeCsvCell(r.name),
+      sanitizeCsvCell(r.position),
+      sanitizeCsvCell(String(r.deliveries || '0').replace(/,/g, '')),
+      r.pctG1,
+      r.pctG2,
+      r.pctG3,
+      r.pctG4,
+      r.totalPct,
+      r.totalReward,
+      r.isPass ? 'ผ่านเกณฑ์' : 'ไม่ผ่าน'
+    ]);
+    const csvOut = Papa.unparse({ fields: headers, data: rows });
+    const blob = new Blob(['\uFEFF' + csvOut], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { cleanText, cleanNum, normalizeDetailedSheetRows } from './parser.js';
 
@@ -6,6 +5,9 @@ export const MASTER_SPREADSHEET_ID = '1GdiQEkdAUT8JLMQEnaFOlV6o5goWm2j_v1HXney7h
 export const MASTER_LATEST_GID = '1816567626';
 export const MASTER_XLSX_URL = `https://docs.google.com/spreadsheets/d/${MASTER_SPREADSHEET_ID}/export?format=xlsx`;
 export const MASTER_LATEST_SHEET_URL = `https://docs.google.com/spreadsheets/d/${MASTER_SPREADSHEET_ID}/edit?gid=${MASTER_LATEST_GID}#gid=${MASTER_LATEST_GID}`;
+export const MAX_WORKBOOK_BYTES = 35 * 1024 * 1024; // 35 MB safety limit against malformed/DoS payloads
+
+const MONTHLY_SHEET_REGEX = /^(\d{2})-(25\d{2})$/;
 
 const THAI_MONTH_NAMES = [
   '',
@@ -28,17 +30,17 @@ function trimRowRight(row, width) {
 }
 
 /**
- * Extracts all monthly detail tabs (`MM-25XX`, e.g. `01-2569` .. `09-2569`)
+ * Extracts all monthly detail tabs (`MM-25XX`, e.g. `01-2569` .. `10-2569`+)
  * from an Excel workbook downloaded from the master Google Sheet,
  * normalizing headers/columns and stripping trailing empty rows/columns.
  */
-export function extractMonthlySheetsFromWorkbook(workbook) {
-  if (!workbook || !Array.isArray(workbook.SheetNames)) return {};
+export function extractMonthlySheetsFromWorkbook(workbook, XLSX) {
+  if (!workbook || !Array.isArray(workbook.SheetNames) || !XLSX) return {};
 
   const months = {};
 
   for (const sheetName of workbook.SheetNames) {
-    const match = String(sheetName).trim().match(/^(\d{2})-(25\d{2})$/);
+    const match = String(sheetName).trim().match(MONTHLY_SHEET_REGEX);
     if (!match) continue;
 
     const mm = match[1];
@@ -48,7 +50,7 @@ export function extractMonthlySheetsFromWorkbook(workbook) {
 
     const monthKey = `${year}-${mm}`;
     const label = `${THAI_MONTH_NAMES[mInt]} ${year}`;
-    const ws = workbook.Sheets[sheetName];
+    const ws = workbook.Sheets?.[sheetName];
     if (!ws) continue;
 
     const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
@@ -134,9 +136,53 @@ export function extractMonthlySheetsFromWorkbook(workbook) {
 }
 
 /**
- * Convenience wrapper that parses an ArrayBuffer / Uint8Array XLSX workbook and extracts all monthly sheets.
+ * Lazily imports `@e965/xlsx`, inspects sheet names first to skip non-monthly pivot/chart tabs,
+ * and parses only the required `MM-25XX` sheets without styles/HTML/formulas.
  */
-export function extractMonthlySheetsFromBuffer(arrayBuffer) {
-  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
-  return extractMonthlySheetsFromWorkbook(wb);
+export async function extractMonthlySheetsFromBuffer(arrayBuffer, { preloadedKeys = null, onlyRecent = false } = {}) {
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+    return {};
+  }
+  if (arrayBuffer.byteLength > MAX_WORKBOOK_BYTES) {
+    throw new Error('ไฟล์ข้อมูลมีขนาดใหญ่เกินขีดจำกัดความปลอดภัย (35 MB)');
+  }
+
+  const XLSX = await import('@e965/xlsx');
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // Step 1: Read sheet directory only (~1ms) so we skip decompressing all 17+ pivot/chart/AVG worksheets
+  const metaWb = XLSX.read(bytes, { type: 'array', bookSheets: true });
+  const monthlySheetEntries = (metaWb.SheetNames || [])
+    .map(rawName => {
+      const trimmed = String(rawName).trim();
+      const m = trimmed.match(MONTHLY_SHEET_REGEX);
+      if (!m) return null;
+      return { rawName, monthKey: `${m[2]}-${m[1]}` };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+
+  if (monthlySheetEntries.length === 0) {
+    return {};
+  }
+
+  let targetEntries = monthlySheetEntries;
+  if (onlyRecent && preloadedKeys instanceof Set && preloadedKeys.size > 0) {
+    // Only unpack the latest 2 monthly tabs plus any brand-new future month tabs not in PRELOADED_MONTHS
+    const recentTail = new Set(monthlySheetEntries.slice(-2).map(e => e.monthKey));
+    targetEntries = monthlySheetEntries.filter(
+      e => recentTail.has(e.monthKey) || !preloadedKeys.has(e.monthKey)
+    );
+  }
+
+  const targetSheetNames = targetEntries.map(e => e.rawName);
+  const wb = XLSX.read(bytes, {
+    type: 'array',
+    sheets: targetSheetNames,
+    cellFormula: false,
+    cellHTML: false,
+    cellStyles: false
+  });
+
+  return extractMonthlySheetsFromWorkbook(wb, XLSX);
 }

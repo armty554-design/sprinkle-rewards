@@ -16,22 +16,48 @@ import {
   registerOfficeUser, 
   findRegisteredUser, 
   isStrictModeEnabled,
-  findOfficeStaffByEmpId,
   OFFICE_BRANCH_LIST
 } from '../utils/userManagement';
-import { parseCSVData } from '../utils/parser';
+import { getCachedParsedMonth } from '../utils/parser';
 import {
   AUTH_SESSION_VERSION,
   resolveLoginCredential,
   verifyAdminPassword,
 } from '../utils/authHelpers';
 
+const STORAGE_ADMIN_LOCKOUT = 'sprinkle_admin_lockout';
+
+function readAdminLockout() {
+  try {
+    const raw = localStorage.getItem(STORAGE_ADMIN_LOCKOUT);
+    if (!raw) return { failedCount: 0, lockedUntil: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      failedCount: Number(parsed?.failedCount) || 0,
+      lockedUntil: Number(parsed?.lockedUntil) || 0,
+    };
+  } catch {
+    return { failedCount: 0, lockedUntil: 0 };
+  }
+}
+
+function writeAdminLockout(state) {
+  try {
+    if (!state.failedCount && !state.lockedUntil) {
+      localStorage.removeItem(STORAGE_ADMIN_LOCKOUT);
+    } else {
+      localStorage.setItem(STORAGE_ADMIN_LOCKOUT, JSON.stringify(state));
+    }
+  } catch {
+    // Ignore storage write error
+  }
+}
+
 export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, currentMonthLabel }) {
   const [mode, setMode] = useState('login'); // 'login', 'admin_auth', 'register', 'success'
   const [inputId, setInputId] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [adminFailedCount, setAdminFailedCount] = useState(0);
-  const [adminLockedUntil, setAdminLockedUntil] = useState(0);
+  const [adminLockout, setAdminLockout] = useState(() => readAdminLockout());
   const [error, setError] = useState('');
   
   // Registration Form State (Office Management: รหัส, ชื่อ-นามสกุล, ตำแหน่ง, สาขา)
@@ -41,18 +67,9 @@ export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, cu
   const [regBranch, setRegBranch] = useState('บางพลี');
   const [registeredUserObj, setRegisteredUserObj] = useState(null);
 
-  // Auto-fill from official office roster when employee ID is typed
+  // Do NOT auto-fill fullName/position/branch from office roster to prevent unauthenticated employee ID enumeration
   const handleEmpIdChange = (val) => {
     setRegEmpId(val);
-    const trimmed = val.trim();
-    if (trimmed.length >= 3) {
-      const match = findOfficeStaffByEmpId(trimmed);
-      if (match) {
-        setRegFullName(match.fullName);
-        setRegPosition(match.position);
-        if (match.branch) setRegBranch(match.branch);
-      }
-    }
   };
 
   const handleLoginSubmit = (e) => {
@@ -65,7 +82,7 @@ export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, cu
       allMonths,
       findRegisteredUserFn: findRegisteredUser,
       isStrictModeFn: isStrictModeEnabled,
-      parseCSVFn: parseCSVData,
+      parseCSVFn: getCachedParsedMonth,
     });
 
     if (result.status === 'require_admin_password') {
@@ -86,29 +103,37 @@ export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, cu
     e.preventDefault();
     setError('');
 
+    const currentLock = readAdminLockout();
     const now = Date.now();
-    if (adminLockedUntil > now) {
-      const waitSec = Math.ceil((adminLockedUntil - now) / 1000);
+    if (currentLock.lockedUntil > now) {
+      setAdminLockout(currentLock);
+      const waitSec = Math.ceil((currentLock.lockedUntil - now) / 1000);
       setError(`ลองผิดเกินกำหนด กรุณารอ ${waitSec} วินาทีแล้วลองใหม่อีกครั้ง`);
       return;
     }
 
     const ok = await verifyAdminPassword(adminPassword);
     if (!ok) {
-      const nextCount = adminFailedCount + 1;
-      setAdminFailedCount(nextCount);
+      const nextCount = currentLock.failedCount + 1;
       if (nextCount >= 5) {
-        setAdminLockedUntil(Date.now() + 30_000);
-        setAdminFailedCount(0);
-        setError('กรอกรหัสผ่านผู้ดูแลระบบไม่ถูกต้องครบ 5 ครั้ง ระบบระงับการลองชั่วคราว 30 วินาที');
+        // Progressive persistent lockout: 60s at 5 failures, 5 minutes at 10+ failures
+        const lockDurationMs = nextCount >= 10 ? 5 * 60_000 : 60_000;
+        const nextState = { failedCount: nextCount, lockedUntil: Date.now() + lockDurationMs };
+        writeAdminLockout(nextState);
+        setAdminLockout(nextState);
+        setError(`กรอกรหัสผ่านผู้ดูแลระบบไม่ถูกต้องเกินกำหนด ระบบระงับการลองชั่วคราว ${Math.round(lockDurationMs / 1000)} วินาที`);
       } else {
-        setError(`รหัสผ่านผู้ดูแลระบบไม่ถูกต้อง (เหลือโอกาสอีก ${5 - nextCount} ครั้ง)`);
+        const nextState = { failedCount: nextCount, lockedUntil: 0 };
+        writeAdminLockout(nextState);
+        setAdminLockout(nextState);
+        setError(`รหัสผ่านผู้ดูแลระบบไม่ถูกต้อง (เหลือโอกาสอีก ${5 - (nextCount % 5)} ครั้ง)`);
       }
       return;
     }
 
-    setAdminFailedCount(0);
-    setAdminLockedUntil(0);
+    const cleared = { failedCount: 0, lockedUntil: 0 };
+    writeAdminLockout(cleared);
+    setAdminLockout(cleared);
     onLogin({
       role: 'admin',
       empId: 'ADMIN',
@@ -337,7 +362,7 @@ export default function LoginScreen({ vehicles = [], allMonths = [], onLogin, cu
                 </label>
                 <input
                   type="text"
-                  placeholder="ระบุรหัสพนักงาน (ระบบจะดึงข้อมูลให้อัตโนมัติ)"
+                  placeholder="ระบุรหัสพนักงานของท่าน"
                   value={regEmpId}
                   onChange={(e) => handleEmpIdChange(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"

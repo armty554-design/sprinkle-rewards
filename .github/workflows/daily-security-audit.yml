@@ -1,0 +1,37 @@
+name: Daily Security & Performance Audit
+
+on:
+  schedule:
+    # รันตรวจสอบอัตโนมัติทุกวัน เวลา 07:00 น. ตามเวลาประเทศไทย (00:00 UTC)
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  daily-audit:
+    name: ตรวจสอบความปลอดภัย ความซ้ำซ้อน และขนาดข้อมูล
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        env:
+          VITE_BASE_PATH: /sprinkle-rewards/
+        run: npm run build
+
+      - name: Run Daily Security, Redundancy & Payload Audit
+        run: npm run audit:daily

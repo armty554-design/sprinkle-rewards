@@ -6,16 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:daily": "node scripts/daily_audit.mjs"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "papaparse": "^5.5.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.0.2",
-    "xlsx": "^0.18.5"
+    "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",

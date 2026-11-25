@@ -30,6 +30,52 @@ export function cleanText(val) {
 }
 
 /**
+ * Protects exported CSV cells against Spreadsheet Formula / DDE Injection (=, +, -, @, tab, CR).
+ * Preserves legitimate plain negative numbers/percentages (e.g. -255, -11.25%).
+ */
+export function sanitizeCsvCell(val) {
+  const str = String(val ?? '');
+  const trimmed = str.trimStart();
+  if (!trimmed) return str;
+  const first = trimmed[0];
+  if (first === '=' || first === '+' || first === '@' || first === '\t' || first === '\r') {
+    return `'${str}`;
+  }
+  if (first === '-' && !/^-[0-9]+([.,][0-9]+)?%?$/.test(trimmed)) {
+    return `'${str}`;
+  }
+  return str;
+}
+
+// Single shared parsed-month LRU cache across App, Executive, KPI Board, Audit, and Login
+const sharedParsedMonthsCache = new Map();
+const MAX_PARSED_MONTHS_CACHE = 24;
+
+export function getCachedParsedMonth(monthObj) {
+  if (!monthObj || !monthObj.csv) return null;
+  const cacheKey = `${monthObj.key || 'raw'}_${monthObj.csv.length}_${monthObj.uploadedAt || ''}`;
+  if (sharedParsedMonthsCache.has(cacheKey)) {
+    const cached = sharedParsedMonthsCache.get(cacheKey);
+    // Refresh LRU order
+    sharedParsedMonthsCache.delete(cacheKey);
+    sharedParsedMonthsCache.set(cacheKey, cached);
+    return cached;
+  }
+  try {
+    const parsed = parseCSVData(monthObj.csv);
+    if (sharedParsedMonthsCache.size >= MAX_PARSED_MONTHS_CACHE) {
+      const oldestKey = sharedParsedMonthsCache.keys().next().value;
+      sharedParsedMonthsCache.delete(oldestKey);
+    }
+    sharedParsedMonthsCache.set(cacheKey, parsed);
+    return parsed;
+  } catch (err) {
+    console.error(`Failed to parse month ${monthObj.key}:`, err);
+    return null;
+  }
+}
+
+/**
  * Normalizes raw 170-col Google Sheet / Excel exports so row[0] is title,
  * row[1] is section headers (H1), row[2] is column labels (H2), row[3+] is vehicle rows,
  * and col[0] starts at 'สาขา' (stripping leading 'No1'/'No2' & '1,2,3...' index rows if present).

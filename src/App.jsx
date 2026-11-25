@@ -1,33 +1,17 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import Navbar from './components/Navbar';
 import DashboardStats from './components/DashboardStats';
-import FilterBar from './components/FilterBar';
-import VehicleCard from './components/VehicleCard';
-import VehicleTable from './components/VehicleTable';
 import SingleVehicleView from './components/SingleVehicleView';
 import MobileVehicleView from './components/MobileVehicleView';
 import LoginScreen from './components/LoginScreen';
-import UploadNewMonthModal from './components/UploadNewMonthModal';
-import VehicleDetailModal from './components/VehicleDetailModal';
-import VehiclePrintSlip from './components/VehiclePrintSlip';
-import BranchAnalytics from './components/BranchAnalytics';
-import KpiBoardView from './components/KpiBoardView';
-import ExecutiveComparisonView from './components/ExecutiveComparisonView';
-import BranchSubmissionAuditView from './components/BranchSubmissionAuditView';
-import AnnualExcellenceView from './components/AnnualExcellenceView';
-import LookerScoresView from './components/LookerScoresView';
-import UserApprovalModal from './components/UserApprovalModal';
-import AdminDataManagerModal from './components/AdminDataManagerModal';
-import { MASTER_XLSX_URL } from './utils/sheetWorkbookSync';
 import { useIsMobile } from './hooks/useIsMobile';
-import { parseCSVData } from './utils/parser';
+import { parseCSVData, getCachedParsedMonth } from './utils/parser';
 import { 
   getAllMonths, 
   getMonthData, 
   saveNewMonth, 
   mergeBranchIntoMonth,
   syncLookerMonthsToStorage,
-  syncWorkbookMonthsToStorage,
   syncMasterWorkbookFromRemote,
   getLastAutoSyncTime,
   clearAndResetToLookerMonths,
@@ -63,6 +47,22 @@ import {
   Link2,
   Check
 } from 'lucide-react';
+
+// Lazy-loaded management views & modals (keeps LoginScreen and driver mobile view fast and lightweight)
+const FilterBar = lazy(() => import('./components/FilterBar'));
+const VehicleCard = lazy(() => import('./components/VehicleCard'));
+const VehicleTable = lazy(() => import('./components/VehicleTable'));
+const UploadNewMonthModal = lazy(() => import('./components/UploadNewMonthModal'));
+const VehicleDetailModal = lazy(() => import('./components/VehicleDetailModal'));
+const VehiclePrintSlip = lazy(() => import('./components/VehiclePrintSlip'));
+const BranchAnalytics = lazy(() => import('./components/BranchAnalytics'));
+const KpiBoardView = lazy(() => import('./components/KpiBoardView'));
+const ExecutiveComparisonView = lazy(() => import('./components/ExecutiveComparisonView'));
+const BranchSubmissionAuditView = lazy(() => import('./components/BranchSubmissionAuditView'));
+const AnnualExcellenceView = lazy(() => import('./components/AnnualExcellenceView'));
+const LookerScoresView = lazy(() => import('./components/LookerScoresView'));
+const UserApprovalModal = lazy(() => import('./components/UserApprovalModal'));
+const AdminDataManagerModal = lazy(() => import('./components/AdminDataManagerModal'));
 
 const STORAGE_AUTH_USER = 'sprinkle_auth_user';
 
@@ -138,19 +138,14 @@ export default function App() {
     return fallback;
   }, [selectedMonthKey, allMonthsList]);
 
-  // Parse CSV for current month safely without breaking
+  // Parse CSV for current month via shared LRU cache (avoids duplicate re-parsing across views)
   const data = useMemo(() => {
-    try {
-      if (currentMonthObj && currentMonthObj.csv) {
-        return parseCSVData(currentMonthObj.csv);
-      }
-      const fallback = allMonthsList.find(m => m && m.csv);
-      return fallback ? parseCSVData(fallback.csv) : parseCSVData('');
-    } catch (err) {
-      console.error('Parse error:', err);
-      const fallback = allMonthsList.find(m => m && m.csv);
-      return fallback ? parseCSVData(fallback.csv) : parseCSVData('');
+    if (currentMonthObj && currentMonthObj.csv) {
+      const parsed = getCachedParsedMonth(currentMonthObj);
+      if (parsed) return parsed;
     }
+    const fallback = allMonthsList.find(m => m && m.csv);
+    return (fallback && getCachedParsedMonth(fallback)) || parseCSVData('');
   }, [currentMonthObj, allMonthsList]);
 
   // Scoped vehicles strictly isolated by user role (self-only users never receive other employees' vehicles)
@@ -241,7 +236,7 @@ export default function App() {
     }, 4000);
   }, []);
 
-  // Initialize persistent storage & automatically check Google Sheet for new/updated months (e.g. 10-2569..12-2569)
+  // Initialize persistent IndexedDB storage on mount (does NOT download 16.7MB XLSX while unauthenticated on LoginScreen)
   useEffect(() => {
     let cancelled = false;
     initStorage().then(() => {
@@ -258,23 +253,31 @@ export default function App() {
       } else {
         setSelectedMonthState(getSelectedMonthKey());
       }
-      runMasterSync({ silent: true, force: false });
     });
 
-    const handleVisibilityOrFocus = () => {
+    return () => {
+      cancelled = true;
+    };
+  }, [initialUrl.month]);
+
+  // Run background sync ONLY after user is authenticated, using visibilitychange (no duplicate focus event)
+  const isAuthenticated = Boolean(currentUser);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    runMasterSync({ silent: true, force: false });
+
+    const handleVisibilityChange = () => {
       if (!document.hidden) {
         runMasterSync({ silent: true, force: false });
       }
     };
-    window.addEventListener('focus', handleVisibilityOrFocus);
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      cancelled = true;
-      window.removeEventListener('focus', handleVisibilityOrFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [initialUrl.month]);
+  }, [isAuthenticated]);
 
   // Sync months on custom months update
   useEffect(() => {
@@ -649,18 +652,22 @@ export default function App() {
   };
 
   const branches = useMemo(() => {
+    if (!canManage) return [];
     return Array.from(new Set(data.vehicles.map(v => v.general.branch).filter(Boolean))).sort();
-  }, [data]);
+  }, [canManage, data]);
 
   const zones = useMemo(() => {
+    if (!canManage || isMobile || safeActiveTab !== 'vehicles') return [];
     return Array.from(new Set(data.vehicles.map(v => v.general.zone).filter(Boolean))).sort();
-  }, [data]);
+  }, [canManage, isMobile, safeActiveTab, data]);
 
   const types = useMemo(() => {
+    if (!canManage || isMobile || safeActiveTab !== 'vehicles') return [];
     return Array.from(new Set(data.vehicles.map(v => v.general.carType).filter(Boolean))).sort();
-  }, [data]);
+  }, [canManage, isMobile, safeActiveTab, data]);
 
   const activeSummary = useMemo(() => {
+    if (!canManage || isMobile) return data.summary;
     if (selectedBranch === 'all') return data.summary;
     const branchVehicles = data.vehicles.filter(v => v.general.branch === selectedBranch);
     const totalVehicles = branchVehicles.length;
@@ -679,9 +686,10 @@ export default function App() {
       vehiclesWithDefects,
       totalPendingDeductions
     };
-  }, [data, selectedBranch]);
+  }, [canManage, isMobile, data, selectedBranch]);
 
   const filteredVehicles = useMemo(() => {
+    if (!canManage || isMobile || safeActiveTab !== 'vehicles') return [];
     return data.vehicles.filter(v => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase().trim();
@@ -707,7 +715,7 @@ export default function App() {
       if (sortBy === 'defects_desc') return b.defects.length - a.defects.length;
       return 0;
     });
-  }, [data, searchQuery, selectedBranch, selectedZone, selectedType, selectedStatus, sortBy]);
+  }, [canManage, isMobile, safeActiveTab, data, searchQuery, selectedBranch, selectedZone, selectedType, selectedStatus, sortBy]);
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -760,52 +768,54 @@ export default function App() {
           onSelectTrendBranch={handleSelectBranchState}
         />
 
-        {printVehicle && (
-          <VehiclePrintSlip
-            vehicle={printVehicle}
-            onClose={() => setPrintVehicle(null)}
-          />
-        )}
+        <Suspense fallback={null}>
+          {printVehicle && (
+            <VehiclePrintSlip
+              vehicle={printVehicle}
+              onClose={() => setPrintVehicle(null)}
+            />
+          )}
 
-        {canManage && isUploadNewMonthOpen && (
-          <UploadNewMonthModal
-            onClose={() => setIsUploadNewMonthOpen(false)}
-            onMonthAdded={handleMonthAdded}
-            currentUser={currentUser}
-          />
-        )}
+          {canManage && isUploadNewMonthOpen && (
+            <UploadNewMonthModal
+              onClose={() => setIsUploadNewMonthOpen(false)}
+              onMonthAdded={handleMonthAdded}
+              currentUser={currentUser}
+            />
+          )}
 
-        {canManage && isApprovalModalOpen && (
-          <UserApprovalModal
-            isOpen={isApprovalModalOpen}
-            onClose={() => setIsApprovalModalOpen(false)}
-            currentAdminName={currentUser?.name}
-            onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
-          />
-        )}
+          {canManage && isApprovalModalOpen && (
+            <UserApprovalModal
+              isOpen={isApprovalModalOpen}
+              onClose={() => setIsApprovalModalOpen(false)}
+              currentAdminName={currentUser?.name}
+              onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
+            />
+          )}
 
-        {canManage && isDataManagerOpen && (
-          <AdminDataManagerModal
-            isOpen={isDataManagerOpen}
-            onClose={() => setIsDataManagerOpen(false)}
-            currentMonthKey={selectedMonthKey}
-            onSelectMonth={handleSelectMonth}
-            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
-            currentUser={currentUser}
-            currentMonthData={data}
-            onDataChanged={(newKey) => {
-              setAllMonthsList(getAllMonths());
-              if (newKey) {
-                setSelectedMonthState(newKey);
-                setSelectedMonthKey(newKey);
-              }
-            }}
-            onSyncAllFromLooker={handleRefreshCurrentMonth}
-            onResetToLooker={handleResetToLooker}
-            isSyncingLooker={isRefreshing}
-            lastSyncTime={lastSyncTime}
-          />
-        )}
+          {canManage && isDataManagerOpen && (
+            <AdminDataManagerModal
+              isOpen={isDataManagerOpen}
+              onClose={() => setIsDataManagerOpen(false)}
+              currentMonthKey={selectedMonthKey}
+              onSelectMonth={handleSelectMonth}
+              onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+              currentUser={currentUser}
+              currentMonthData={data}
+              onDataChanged={(newKey) => {
+                setAllMonthsList(getAllMonths());
+                if (newKey) {
+                  setSelectedMonthState(newKey);
+                  setSelectedMonthKey(newKey);
+                }
+              }}
+              onSyncAllFromLooker={handleRefreshCurrentMonth}
+              onResetToLooker={handleResetToLooker}
+              isSyncingLooker={isRefreshing}
+              lastSyncTime={lastSyncTime}
+            />
+          )}
+        </Suspense>
       </>
     );
   }
@@ -1005,150 +1015,152 @@ export default function App() {
           />
         )}
 
-        {/* TAB 2: ALL VEHICLES OVERVIEW (MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'vehicles' && (
-          <div>
-            <FilterBar
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              selectedBranch={selectedBranch}
-              setSelectedBranch={handleSelectBranchState}
-              branches={branches}
-              selectedZone={selectedZone}
-              setSelectedZone={setSelectedZone}
-              selectedType={selectedType}
-              setSelectedType={setSelectedType}
-              selectedStatus={selectedStatus}
-              setSelectedStatus={setSelectedStatus}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              zones={zones}
-              types={types}
-              totalFiltered={filteredVehicles.length}
-              totalAll={data.vehicles.length}
-              onReset={handleResetFilters}
-            />
-
-            {filteredVehicles.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center my-6">
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400 mb-3">
-                  <AlertCircle className="w-8 h-8" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-lg">ไม่พบข้อมูลเบอร์รถตามเงื่อนไขที่ค้นหา</h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
-                  กรุณาตรวจสอบคำค้นหา หรือกดปุ่ม "ล้างตัวกรอง" เพื่อแสดงรถทั้งหมด
-                </p>
-                <button
-                  onClick={handleResetFilters}
-                  className="mt-4 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-medium transition-colors"
-                >
-                  ล้างตัวกรองทั้งหมด
-                </button>
-              </div>
-            ) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {filteredVehicles.map(vehicle => (
-                  <VehicleCard
-                    key={vehicle.id}
-                    vehicle={vehicle}
-                    onSelect={(v) => handleSelectVehicle(v, 'single')}
-                    onPrint={setPrintVehicle}
-                  />
-                ))}
-              </div>
-            ) : (
-              <VehicleTable
-                vehicles={filteredVehicles}
-                onSelect={(v) => handleSelectVehicle(v, 'single')}
-                onPrint={setPrintVehicle}
+        <Suspense fallback={<div className="py-16 text-center text-sm text-slate-400 font-medium">กำลังโหลดข้อมูลหน้านี้...</div>}>
+          {/* TAB 2: ALL VEHICLES OVERVIEW (MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'vehicles' && (
+            <div>
+              <FilterBar
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                selectedBranch={selectedBranch}
+                setSelectedBranch={handleSelectBranchState}
+                branches={branches}
+                selectedZone={selectedZone}
+                setSelectedZone={setSelectedZone}
+                selectedType={selectedType}
+                setSelectedType={setSelectedType}
+                selectedStatus={selectedStatus}
+                setSelectedStatus={setSelectedStatus}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                zones={zones}
+                types={types}
+                totalFiltered={filteredVehicles.length}
+                totalAll={data.vehicles.length}
+                onReset={handleResetFilters}
               />
-            )}
-          </div>
-        )}
 
-        {/* TAB 3: BRANCH ANALYTICS OVERVIEW (MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'analytics' && (
-          <BranchAnalytics
-            data={data}
-            selectedBranch={selectedBranch}
-            onSelectBranch={handleSelectBranchState}
-            onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
-          />
-        )}
-
-        {/* TAB 3.5: KPI BOARD (36 STANDARD REWARD PERFORMANCE METRICS — MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'kpi_board' && (
-          <KpiBoardView
-            data={data}
-            allMonthsList={allMonthsList}
-            selectedMonthKey={selectedMonthKey}
-            onSelectMonth={handleSelectMonth}
-            selectedBranch={selectedBranch}
-            onSelectBranch={handleSelectBranchState}
-            subTab={kpiSubTab}
-            onSelectSubTab={handleSelectKpiSubTab}
-            onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
-          />
-        )}
-
-        {/* TAB 4: EXECUTIVE COMPARISON VIEW (MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'executive' && (
-          <ExecutiveComparisonView
-            data={data}
-            allMonthsList={allMonthsList}
-            selectedMonthKey={selectedMonthKey}
-            onSelectMonth={handleSelectMonth}
-            currentUser={currentUser}
-            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
-            onOpenDataManager={() => setIsDataManagerOpen(true)}
-            subTab={execSubTab}
-            onSelectSubTab={handleSelectExecSubTab}
-            trendBranchFilter={selectedBranch}
-            onSelectTrendBranch={handleSelectBranchState}
-          />
-        )}
-
-        {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW (MOVED UNDER SETTINGS ⚙️ — MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'audit' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between text-xs shadow-2xs">
-              <div className="flex items-center gap-2 text-slate-600 font-semibold">
-                <Settings className="w-4 h-4 text-sky-600" />
-                <span>ตั้งค่า &gt; <strong className="text-slate-900">ตรวจบันทึกข้อมูล</strong></span>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigateTab('single')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>กลับหน้าหลัก</span>
-              </button>
+              {filteredVehicles.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center my-6">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400 mb-3">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-bold text-slate-900 text-lg">ไม่พบข้อมูลเบอร์รถตามเงื่อนไขที่ค้นหา</h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
+                    กรุณาตรวจสอบคำค้นหา หรือกดปุ่ม "ล้างตัวกรอง" เพื่อแสดงรถทั้งหมด
+                  </p>
+                  <button
+                    onClick={handleResetFilters}
+                    className="mt-4 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-medium transition-colors"
+                  >
+                    ล้างตัวกรองทั้งหมด
+                  </button>
+                </div>
+              ) : viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {filteredVehicles.map(vehicle => (
+                    <VehicleCard
+                      key={vehicle.id}
+                      vehicle={vehicle}
+                      onSelect={(v) => handleSelectVehicle(v, 'single')}
+                      onPrint={setPrintVehicle}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <VehicleTable
+                  vehicles={filteredVehicles}
+                  onSelect={(v) => handleSelectVehicle(v, 'single')}
+                  onPrint={setPrintVehicle}
+                />
+              )}
             </div>
-            <BranchSubmissionAuditView
+          )}
+
+          {/* TAB 3: BRANCH ANALYTICS OVERVIEW (MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'analytics' && (
+            <BranchAnalytics
+              data={data}
+              selectedBranch={selectedBranch}
+              onSelectBranch={handleSelectBranchState}
+              onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
+            />
+          )}
+
+          {/* TAB 3.5: KPI BOARD (36 STANDARD REWARD PERFORMANCE METRICS — MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'kpi_board' && (
+            <KpiBoardView
+              data={data}
+              allMonthsList={allMonthsList}
+              selectedMonthKey={selectedMonthKey}
+              onSelectMonth={handleSelectMonth}
+              selectedBranch={selectedBranch}
+              onSelectBranch={handleSelectBranchState}
+              subTab={kpiSubTab}
+              onSelectSubTab={handleSelectKpiSubTab}
+              onSelectVehicle={(v) => handleSelectVehicle(v, 'single')}
+            />
+          )}
+
+          {/* TAB 4: EXECUTIVE COMPARISON VIEW (MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'executive' && (
+            <ExecutiveComparisonView
               data={data}
               allMonthsList={allMonthsList}
               selectedMonthKey={selectedMonthKey}
               onSelectMonth={handleSelectMonth}
               currentUser={currentUser}
               onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
-              onFilterBranchAndNavigate={(branchName) => {
-                handleSelectBranchState(branchName);
-                navigateTab('vehicles');
-              }}
+              onOpenDataManager={() => setIsDataManagerOpen(true)}
+              subTab={execSubTab}
+              onSelectSubTab={handleSelectExecSubTab}
+              trendBranchFilter={selectedBranch}
+              onSelectTrendBranch={handleSelectBranchState}
             />
-          </div>
-        )}
+          )}
 
-        {/* TAB 6: ANNUAL EXCELLENCE 2569 VIEW (MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'excellence_annual' && (
-          <AnnualExcellenceView />
-        )}
+          {/* TAB 5: BRANCH SUBMISSION AUDIT VIEW (MOVED UNDER SETTINGS ⚙️ — MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'audit' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center justify-between text-xs shadow-2xs">
+                <div className="flex items-center gap-2 text-slate-600 font-semibold">
+                  <Settings className="w-4 h-4 text-sky-600" />
+                  <span>ตั้งค่า &gt; <strong className="text-slate-900">ตรวจบันทึกข้อมูล</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateTab('single')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>กลับหน้าหลัก</span>
+                </button>
+              </div>
+              <BranchSubmissionAuditView
+                data={data}
+                allMonthsList={allMonthsList}
+                selectedMonthKey={selectedMonthKey}
+                onSelectMonth={handleSelectMonth}
+                currentUser={currentUser}
+                onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+                onFilterBranchAndNavigate={(branchName) => {
+                  handleSelectBranchState(branchName);
+                  navigateTab('vehicles');
+                }}
+              />
+            </div>
+          )}
 
-        {/* TAB 7: LOOKER SCORES 2569 VIEW (MANAGEMENT ONLY) */}
-        {canManage && safeActiveTab === 'looker_scores' && (
-          <LookerScoresView />
-        )}
+          {/* TAB 6: ANNUAL EXCELLENCE 2569 VIEW (MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'excellence_annual' && (
+            <AnnualExcellenceView />
+          )}
+
+          {/* TAB 7: LOOKER SCORES 2569 VIEW (MANAGEMENT ONLY) */}
+          {canManage && safeActiveTab === 'looker_scores' && (
+            <LookerScoresView />
+          )}
+        </Suspense>
 
       </main>
 
@@ -1161,60 +1173,62 @@ export default function App() {
       </footer>
 
       {/* Modals */}
-      {selectedVehicle && (
-        <VehicleDetailModal
-          vehicle={selectedVehicle}
-          onClose={() => setSelectedVehicle(null)}
-          onPrint={(v) => setPrintVehicle(v)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {selectedVehicle && (
+          <VehicleDetailModal
+            vehicle={selectedVehicle}
+            onClose={() => setSelectedVehicle(null)}
+            onPrint={(v) => setPrintVehicle(v)}
+          />
+        )}
 
-      {printVehicle && (
-        <VehiclePrintSlip
-          vehicle={printVehicle}
-          onClose={() => setPrintVehicle(null)}
-        />
-      )}
+        {printVehicle && (
+          <VehiclePrintSlip
+            vehicle={printVehicle}
+            onClose={() => setPrintVehicle(null)}
+          />
+        )}
 
-      {canManage && isUploadNewMonthOpen && (
-        <UploadNewMonthModal
-          onClose={() => setIsUploadNewMonthOpen(false)}
-          onMonthAdded={handleMonthAdded}
-          currentUser={currentUser}
-        />
-      )}
+        {canManage && isUploadNewMonthOpen && (
+          <UploadNewMonthModal
+            onClose={() => setIsUploadNewMonthOpen(false)}
+            onMonthAdded={handleMonthAdded}
+            currentUser={currentUser}
+          />
+        )}
 
-      {canManage && isApprovalModalOpen && (
-        <UserApprovalModal
-          isOpen={isApprovalModalOpen}
-          onClose={() => setIsApprovalModalOpen(false)}
-          currentAdminName={currentUser?.name}
-          onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
-        />
-      )}
+        {canManage && isApprovalModalOpen && (
+          <UserApprovalModal
+            isOpen={isApprovalModalOpen}
+            onClose={() => setIsApprovalModalOpen(false)}
+            currentAdminName={currentUser?.name}
+            onUsersChanged={() => setPendingUsersCount(getPendingUsersCount())}
+          />
+        )}
 
-      {canManage && isDataManagerOpen && (
-        <AdminDataManagerModal
-          isOpen={isDataManagerOpen}
-          onClose={() => setIsDataManagerOpen(false)}
-          currentMonthKey={selectedMonthKey}
-          onSelectMonth={handleSelectMonth}
-          onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
-          currentUser={currentUser}
-          currentMonthData={data}
-          onDataChanged={(newKey) => {
-            setAllMonthsList(getAllMonths());
-            if (newKey) {
-              setSelectedMonthState(newKey);
-              setSelectedMonthKey(newKey);
-            }
-          }}
-          onSyncAllFromLooker={handleRefreshCurrentMonth}
-          onResetToLooker={handleResetToLooker}
-          isSyncingLooker={isRefreshing}
-          lastSyncTime={lastSyncTime}
-        />
-      )}
+        {canManage && isDataManagerOpen && (
+          <AdminDataManagerModal
+            isOpen={isDataManagerOpen}
+            onClose={() => setIsDataManagerOpen(false)}
+            currentMonthKey={selectedMonthKey}
+            onSelectMonth={handleSelectMonth}
+            onOpenUploadModal={() => setIsUploadNewMonthOpen(true)}
+            currentUser={currentUser}
+            currentMonthData={data}
+            onDataChanged={(newKey) => {
+              setAllMonthsList(getAllMonths());
+              if (newKey) {
+                setSelectedMonthState(newKey);
+                setSelectedMonthKey(newKey);
+              }
+            }}
+            onSyncAllFromLooker={handleRefreshCurrentMonth}
+            onResetToLooker={handleResetToLooker}
+            isSyncingLooker={isRefreshing}
+            lastSyncTime={lastSyncTime}
+          />
+        )}
+      </Suspense>
 
     </div>
   );

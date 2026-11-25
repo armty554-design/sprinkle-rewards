@@ -24,20 +24,21 @@ import {
 } from 'lucide-react';
 import { getOperationalBranches, getBranchOfficeStaff } from '../data/officeStaffData';
 import { formatThaiMonthLabel } from '../utils/monthStorage';
-import { parseCSVData } from '../utils/parser';
+import { getCachedParsedMonth } from '../utils/parser';
 
-// Local cache for historical month parsed vehicles by branch
+// Local cache for historical month branch summaries built from shared parsed cache
 const monthBranchMapCache = new Map();
 
 function getBranchPresenceInMonth(monthObj) {
   if (!monthObj || !monthObj.csv) return new Map();
-  const cacheKey = `${monthObj.key}_${monthObj.csv.length}`;
+  const cacheKey = `${monthObj.key}_${monthObj.csv.length}_${monthObj.uploadedAt || ''}`;
   if (monthBranchMapCache.has(cacheKey)) {
     return monthBranchMapCache.get(cacheKey);
   }
 
   try {
-    const parsed = parseCSVData(monthObj.csv);
+    const parsed = getCachedParsedMonth(monthObj);
+    if (!parsed) return new Map();
     const branchMap = new Map(); // branchName -> { count, totalReward, qualifiedCount }
     (parsed.vehicles || []).forEach(v => {
       const b = (v.general.branch || '').trim();

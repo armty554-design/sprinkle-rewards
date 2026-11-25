@@ -12,12 +12,19 @@ const STORAGE_SELECTED_MONTH = 'sprinkle_selected_month';
 const STORAGE_LOOKER_VERSION = 'sprinkle_full_sheets69_reset_v3_m10';
 const LOOKER_CLEAN_VERSION = 'sheets69_full_v3_m10';
 const STORAGE_LAST_AUTO_SYNC = 'sprinkle_last_auto_sync_ts';
-export const AUTO_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const STORAGE_LAST_SYNC_ATTEMPT = 'sprinkle_last_sync_attempt_ts';
+export const AUTO_SYNC_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes cooldown to prevent excessive 16.7MB XLSX downloads
+export const SYNC_FAILURE_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes backoff after failed network/parse attempt
 
 // In-memory cache & active sync lock
 let customMonthsCache = null;
+let cachedSortedMonths = null;
 let isInitialized = false;
 let activeWorkbookSyncPromise = null;
+
+function invalidateMonthsMemo() {
+  cachedSortedMonths = null;
+}
 
 export const THAI_MONTH_NAMES = [
   '',
@@ -101,38 +108,51 @@ export function getLastAutoSyncTime() {
   }
 }
 
-/**
- * Checks whether enough time has passed since the last sync to re-fetch Google Sheets automatically.
- */
-export function shouldAutoSync(cooldownMs = AUTO_SYNC_COOLDOWN_MS) {
-  const last = getLastAutoSyncTime();
-  return !last || (Date.now() - last) >= cooldownMs;
+function getLastSyncAttemptTime() {
+  try {
+    const raw = localStorage.getItem(STORAGE_LAST_SYNC_ATTEMPT);
+    const val = parseInt(raw || '0', 10);
+    return Number.isFinite(val) ? val : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**
- * Safely persists custom months into localStorage if size allows; if 5MB quota is exceeded,
- * falls back to keeping newest / non-preloaded months first while IndexedDB keeps all months.
+ * Checks whether enough time has passed since the last sync (and last failed attempt) to re-fetch Google Sheets automatically.
+ */
+export function shouldAutoSync(cooldownMs = AUTO_SYNC_COOLDOWN_MS) {
+  const now = Date.now();
+  const lastSuccess = getLastAutoSyncTime();
+  if (lastSuccess && (now - lastSuccess) < cooldownMs) {
+    return false;
+  }
+  const lastAttempt = getLastSyncAttemptTime();
+  if (lastAttempt && (now - lastAttempt) < SYNC_FAILURE_BACKOFF_MS) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * IndexedDB stores all custom months without quota issues.
+ * Keep at most the single newest custom month in localStorage (if < 1.5MB) for instant cold startup,
+ * avoiding repeated multi-megabyte JSON.stringify quota-exception loops.
  */
 function trySyncToLocalStorage(monthsObj) {
   try {
-    localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(monthsObj));
-  } catch (err) {
-    try {
-      // Prioritize newest months (e.g. 10-2569..12-2569) so startup stays instant before IndexedDB resolves
-      const sortedKeys = Object.keys(monthsObj).sort().reverse();
-      const partial = {};
-      for (const k of sortedKeys) {
-        partial[k] = monthsObj[k];
-        const serialized = JSON.stringify(partial);
-        if (serialized.length > 2_500_000) {
-          delete partial[k];
-          break;
-        }
-      }
-      localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify(partial));
-    } catch (e2) {
-      console.info('LocalStorage quota exceeded (5MB limit). Data is securely persisted in IndexedDB.');
+    const sortedKeys = Object.keys(monthsObj || {}).sort().reverse();
+    if (sortedKeys.length === 0) {
+      localStorage.removeItem(STORAGE_CUSTOM_MONTHS);
+      return;
     }
+    const newestKey = sortedKeys[0];
+    const newestItem = monthsObj[newestKey];
+    if (newestItem?.csv && newestItem.csv.length < 1_500_000) {
+      localStorage.setItem(STORAGE_CUSTOM_MONTHS, JSON.stringify({ [newestKey]: newestItem }));
+    }
+  } catch {
+    // IndexedDB already persists the full dataset reliably
   }
 }
 
@@ -158,12 +178,14 @@ export async function clearAndResetToLookerMonths({ dispatch = true } = {}) {
   }
 
   customMonthsCache = {};
+  invalidateMonthsMemo();
   localStorage.removeItem(STORAGE_CUSTOM_MONTHS);
   localStorage.removeItem('sprinkle_current_data');
   localStorage.removeItem('sprinkle_daily_history');
   localStorage.removeItem('sprinkle_looker_clean_reset_v1');
   localStorage.removeItem('sprinkle_full_sheets69_reset_v2');
   localStorage.removeItem(STORAGE_LAST_AUTO_SYNC);
+  localStorage.removeItem(STORAGE_LAST_SYNC_ATTEMPT);
   const latestKey = getLatestPreloadedKey();
   localStorage.setItem(STORAGE_SELECTED_MONTH, latestKey);
   localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
@@ -203,6 +225,7 @@ export async function initStorage() {
             }
           }
         });
+        if (hasUpdates) invalidateMonthsMemo();
       }
 
       // Migrate any cached months into IndexedDB
@@ -259,6 +282,7 @@ export async function syncLookerMonthsToStorage(lookerCsvText) {
   }
 
   customMonthsCache = customMonths;
+  invalidateMonthsMemo();
   trySyncToLocalStorage(customMonths);
   localStorage.setItem(STORAGE_LOOKER_VERSION, LOOKER_CLEAN_VERSION);
 
@@ -273,12 +297,13 @@ export async function syncLookerMonthsToStorage(lookerCsvText) {
 }
 
 /**
- * Syncs all detailed monthly sheets (`01-2569` .. `12-2569`+) parsed from an XLSX ArrayBuffer
+ * Syncs detailed monthly sheets (`01-2569` .. `12-2569`+) parsed from an XLSX ArrayBuffer
  * of the master Google Sheet into IndexedDB / storage, skipping duplicates identical to PRELOADED_MONTHS
  * and automatically selecting newly added future months.
  */
-export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew = true } = {}) {
-  const monthsMap = extractMonthlySheetsFromBuffer(arrayBuffer);
+export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew = true, onlyRecent = false } = {}) {
+  const preloadedKeys = new Set(Object.keys(PRELOADED_MONTHS));
+  const monthsMap = await extractMonthlySheetsFromBuffer(arrayBuffer, { preloadedKeys, onlyRecent });
   const syncedKeys = Object.keys(monthsMap).sort();
   if (syncedKeys.length === 0) {
     return { syncedKeys: [], addedKeys: [], updatedKeys: [], hasChanges: false, monthsMap: {}, syncedAt: Date.now() };
@@ -333,6 +358,7 @@ export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew =
 
   if (customModified) {
     customMonthsCache = customMonths;
+    invalidateMonthsMemo();
     trySyncToLocalStorage(customMonths);
   }
 
@@ -364,8 +390,8 @@ export async function syncWorkbookMonthsToStorage(arrayBuffer, { autoSelectNew =
 }
 
 /**
- * Fetches the live Google Sheet `.xlsx` workbook and syncs all monthly tabs (`01-2569`..`12-2569`+).
- * Coalesces concurrent calls and honors the cooldown unless `force: true`.
+ * Fetches the live Google Sheet `.xlsx` workbook and syncs monthly tabs.
+ * Coalesces concurrent calls, backs off on errors, and parses only recent/new tabs during silent auto-sync.
  */
 export async function syncMasterWorkbookFromRemote({ force = false, maxAgeMs = AUTO_SYNC_COOLDOWN_MS, autoSelectNew = true } = {}) {
   if (!force && !shouldAutoSync(maxAgeMs)) {
@@ -384,11 +410,22 @@ export async function syncMasterWorkbookFromRemote({ force = false, maxAgeMs = A
   }
 
   activeWorkbookSyncPromise = (async () => {
-    const res = await fetch(`${MASTER_XLSX_URL}&_t=${Date.now()}`, { cache: 'no-store' });
+    try {
+      localStorage.setItem(STORAGE_LAST_SYNC_ATTEMPT, String(Date.now()));
+    } catch {
+      // Ignore storage write error
+    }
+    const targetUrl = force ? `${MASTER_XLSX_URL}&_t=${Date.now()}` : MASTER_XLSX_URL;
+    const fetchOpts = force ? { cache: 'no-store' } : { cache: 'default' };
+    const res = await fetch(targetUrl, fetchOpts);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buffer = await res.arrayBuffer();
-    const result = await syncWorkbookMonthsToStorage(buffer, { autoSelectNew });
-    return { ...result, skipped: false };
+    const result = await syncWorkbookMonthsToStorage(buffer, {
+      autoSelectNew,
+      onlyRecent: !force
+    });
+    const allKnownKeys = getAllMonths().map(m => m.key).sort();
+    return { ...result, syncedKeys: allKnownKeys.length > 0 ? allKnownKeys : result.syncedKeys, skipped: false };
   })();
 
   try {
@@ -398,8 +435,11 @@ export async function syncMasterWorkbookFromRemote({ force = false, maxAgeMs = A
   }
 }
 
-// Get list of all available months (Preloaded 01-2569..09-2569 + User uploaded/synced)
+// Get list of all available months (memoized until customMonthsCache changes)
 export function getAllMonths() {
+  if (cachedSortedMonths !== null) {
+    return cachedSortedMonths;
+  }
   const customMonths = getCustomMonths();
 
   // Combine preloaded Looker 69 months and synced/custom updates
@@ -423,9 +463,9 @@ export function getAllMonths() {
     });
   });
 
-  // Sort descending chronologically (e.g. 2569-09, 2569-08, ..., 2569-01)
-  const sorted = Array.from(monthMap.values()).sort((a, b) => b.key.localeCompare(a.key));
-  return sorted;
+  // Sort descending chronologically (e.g. 2569-10, 2569-09, ..., 2569-01)
+  cachedSortedMonths = Array.from(monthMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+  return cachedSortedMonths;
 }
 
 export function getMonthData(monthKey) {
@@ -524,6 +564,7 @@ export function saveNewMonth(monthKey, label, csvText, note = '') {
 
     customMonths[normKey] = monthObj;
     customMonthsCache = customMonths;
+    invalidateMonthsMemo();
 
     // Asynchronously save to IndexedDB (unlimited storage)
     idbSaveMonth(monthObj);
@@ -654,6 +695,7 @@ export function mergeBranchIntoMonth(monthKey, branchCsv, label = '', note = '')
 
     customMonths[normKey] = monthObj;
     customMonthsCache = customMonths;
+    invalidateMonthsMemo();
 
     // Asynchronously save to IndexedDB (unlimited storage capacity)
     idbSaveMonth(monthObj);
@@ -675,6 +717,7 @@ export function deleteCustomMonth(monthKey) {
     const customMonths = getCustomMonths();
     delete customMonths[monthKey];
     customMonthsCache = customMonths;
+    invalidateMonthsMemo();
 
     // Delete from IndexedDB
     idbDeleteMonth(monthKey);

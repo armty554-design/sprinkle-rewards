@@ -1,4 +1,4 @@
-import { parseCSVData, cleanNum, cleanText } from './parser.js';
+import { getCachedParsedMonth, cleanNum, cleanText } from './parser.js';
 
 export const KPI_GROUPS = [
   { id: 'g1', label: 'กลุ่ม 1 จัดส่ง', fullLabel: '1. กลุ่มงานจัดส่ง', color: '#0284c7', badgeBg: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -441,13 +441,13 @@ const parsedMonthCache = new Map();
 
 function getCachedMonthRows(monthObj) {
   if (!monthObj?.csv) return [];
-  const cacheKey = `${monthObj.key}_${monthObj.csv.length}`;
+  const cacheKey = `${monthObj.key}_${monthObj.csv.length}_${monthObj.uploadedAt || ''}`;
   if (parsedMonthCache.has(cacheKey)) {
     return parsedMonthCache.get(cacheKey);
   }
   try {
-    const parsed = parseCSVData(monthObj.csv);
-    const kpiRows = (parsed.vehicles || []).map(extractVehicleKpiRow);
+    const parsed = getCachedParsedMonth(monthObj);
+    const kpiRows = (parsed?.vehicles || []).map(extractVehicleKpiRow);
     parsedMonthCache.set(cacheKey, kpiRows);
     return kpiRows;
   } catch {

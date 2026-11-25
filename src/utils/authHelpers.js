@@ -183,35 +183,29 @@ export async function verifyAdminPassword(password) {
   return digest === String(expectedHash).trim().toLowerCase();
 }
 
-function collectMonthVehicleLists(currentVehicles = [], allMonths = [], parseCSVFn) {
-  const lists = [];
+function* iterateMonthVehicleListsLazily(currentVehicles = [], allMonths = [], parseCSVFn) {
   if (Array.isArray(currentVehicles) && currentVehicles.length > 0) {
-    lists.push(currentVehicles);
+    yield currentVehicles;
   }
   if (Array.isArray(allMonths) && typeof parseCSVFn === 'function') {
     for (const m of allMonths) {
       if (!m?.csv) continue;
       try {
-        const parsed = parseCSVFn(m.csv);
-        if (parsed?.vehicles?.length) {
-          lists.push(parsed.vehicles);
+        const parsed = parseCSVFn(m);
+        const list = parsed?.vehicles;
+        if (Array.isArray(list) && list.length > 0 && list !== currentVehicles) {
+          yield list;
         }
       } catch {
         // Ignore unparseable month blobs during credential scan
       }
     }
   }
-  return lists;
 }
 
 /**
  * Resolves login strictly by Employee ID (`empId`), NEVER by `carCode` and NEVER via weak hardcoded backdoors.
- * Order of precedence:
- *   1. Admin keyword -> requires Admin password step
- *   2. Registered / Office staff list
- *   3. Strict mode check
- *   4. Supervisors (checked BEFORE driver/contractor so logistics supervisors with a car row keep supervisor access)
- *   5. Contractor (ผปก.) / Driver (พนักงานขับรถ) matched strictly by `general.empId` across all months
+ * Checks already-parsed `currentVehicles` FIRST (0ms, zero CSV re-parse) before lazily scanning older months.
  */
 export function resolveLoginCredential({
   inputId,
@@ -272,7 +266,7 @@ export function resolveLoginCredential({
     };
   }
 
-  // 3. Check current vehicles first, then scan all historical months lazily only if needed
+  // 3. Check current vehicles first (instant, 0 CSV parses), then scan older months lazily only if not found
   const matchSupervisorInList = (list) => {
     const sup = list.find(
       (v) =>
@@ -314,15 +308,28 @@ export function resolveLoginCredential({
     };
   };
 
-  // Scan supervisor across current + historical months BEFORE matching driver/contractor
-  const lists = collectMonthVehicleLists(currentVehicles, allMonths, parseCSVFn);
-  for (const list of lists) {
+  // Fast path: check already-parsed current month first for both supervisor and employee!
+  if (Array.isArray(currentVehicles) && currentVehicles.length > 0) {
+    const supNow = matchSupervisorInList(currentVehicles);
+    if (supNow) return supNow;
+    const empNow = matchEmployeeInList(currentVehicles);
+    if (empNow) return empNow;
+  }
+
+  // Fallback path (only for employees/supervisors absent from current month): lazily inspect historical months
+  const parseHelper = (m) => {
+    if (typeof parseCSVFn !== 'function' || !m?.csv) return null;
+    const res = parseCSVFn(m);
+    if (res?.vehicles?.length) return res;
+    return parseCSVFn(m.csv);
+  };
+
+  for (const list of iterateMonthVehicleListsLazily([], allMonths, parseHelper)) {
     const supResult = matchSupervisorInList(list);
     if (supResult) return supResult;
   }
 
-  // Scan contractor / driver strictly by empId across current + historical months
-  for (const list of lists) {
+  for (const list of iterateMonthVehicleListsLazily([], allMonths, parseHelper)) {
     const empResult = matchEmployeeInList(list);
     if (empResult) return empResult;
   }

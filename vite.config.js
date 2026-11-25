@@ -8,5 +8,26 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true
+  },
+  build: {
+    chunkSizeWarningLimit: 4000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@e965/xlsx')) {
+            return 'vendor-xlsx';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/lucide-react') || id.includes('node_modules/papaparse')) {
+            return 'vendor-core';
+          }
+          if (id.includes('/src/data/allMonthsData')) {
+            return 'data-months';
+          }
+          if (id.includes('/src/data/annualExcellenceData')) {
+            return 'data-annual';
+          }
+        }
+      }
+    }
   }
 })
